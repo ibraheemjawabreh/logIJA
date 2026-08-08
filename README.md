@@ -17,14 +17,32 @@ src/
     pool.ts              ← pg connection pool
     migrate.ts           ← SQL migration runner
     health.ts            ← lightweight DB health check
+  logs/
+    log.types.ts         ingestion request/result types
+    log.validation.ts    pure per-entry validation + normalization
+    log.cursor.ts        signed opaque cursor helpers
+    log.query-validation.ts typed query parsing and validation
+    log.query-builder.ts parameterized SQL query builders
+    log.service.ts       batch validation + persistence coordination
+    log.repository.ts    bulk insert + query execution
   routes/
     health.route.ts      ← GET /health
+    logs.route.ts        POST /logs
 migrations/
   001_initial_logs.sql   ← logs table + initial indexes
 tests/
   config.test.ts
   health.test.ts
   app.test.ts
+  log.query-builder.test.ts
+  log.query-validation.test.ts
+  log.validation.test.ts
+  logs.ingestion.test.ts
+  logs.query.route.test.ts
+  logs.query.service.test.ts
+  logs.route.test.ts
+  integration/
+    logs.integration.ts
 ```
 
 ## Requirements
@@ -45,13 +63,14 @@ cp .env.example .env   # optional — defaults work out of the box
 
 ## Environment configuration
 
-| Variable       | Default                                            | Allowed values                                               |
-| -------------- | -------------------------------------------------- | ------------------------------------------------------------ |
-| `NODE_ENV`     | `development`                                      | `development`, `test`, `production`                          |
-| `HOST`         | `0.0.0.0`                                          | any non-empty string                                         |
-| `PORT`         | `8080`                                             | integer 1–65535                                              |
-| `LOG_LEVEL`    | `info`                                             | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent` |
-| `DATABASE_URL` | `postgresql://logija:logija@localhost:5432/logija` | any `postgresql://` or `postgres://` URL                     |
+| Variable        | Default                                            | Allowed values                                               |
+| --------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| `NODE_ENV`      | `development`                                      | `development`, `test`, `production`                          |
+| `HOST`          | `0.0.0.0`                                          | any non-empty string                                         |
+| `PORT`          | `8080`                                             | integer 1–65535                                              |
+| `LOG_LEVEL`     | `info`                                             | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent` |
+| `DATABASE_URL`  | `postgresql://logija:logija@localhost:5432/logija` | any `postgresql://` or `postgres://` URL                     |
+| `CURSOR_SECRET` | `logija-local-cursor-secret`                       | any non-empty string                                         |
 
 An explicit invalid value causes an immediate startup failure with a descriptive error message. A missing variable silently uses the default.
 
@@ -72,6 +91,9 @@ npm run format:check
 
 # Run tests (no database required)
 npm test
+
+# Run PostgreSQL integration tests (requires PostgreSQL)
+npm run test:integration
 
 # Watch mode
 npm run test:watch
@@ -134,7 +156,204 @@ The service only becomes available after:
 3. All pending SQL migrations complete.
 4. Fastify starts listening.
 
-No other endpoints are implemented yet.
+### `POST /logs`
+
+Accepts a batch of structured log entries. A batch containing one entry is valid. A single raw log object outside the `logs` array is not supported.
+
+```json
+{
+  "logs": [
+    {
+      "timestamp": "2026-07-20T14:32:01.123Z",
+      "level": "error",
+      "service": "checkout",
+      "message": "payment declined",
+      "attributes": {
+        "user_id": "42",
+        "region": "eu-west",
+        "retries": 3
+      }
+    }
+  ]
+}
+```
+
+Successful response:
+
+```json
+{
+  "accepted": 1,
+  "rejected": []
+}
+```
+
+Mixed-validity batches are partially accepted. Invalid entries do not prevent valid entries from being stored, and rejected entries report their original array index:
+
+```json
+{
+  "accepted": 2,
+  "rejected": [
+    {
+      "index": 1,
+      "reason": "invalid level: 'critical'"
+    }
+  ]
+}
+```
+
+#### Validation rules
+
+- `timestamp` is required, must be a strict RFC3339-style instant with `Z` or an explicit numeric offset, and must not be more than 5 minutes in the future. Accepted timestamps are normalized to UTC before storage.
+- `level` is required and must be exactly one of `debug`, `info`, `warn`, or `error`.
+- `service` is required, must be a string, and must not be empty or whitespace-only.
+- `message` is required, must be a string, and must not be empty or whitespace-only. The original valid message is preserved.
+- `attributes` is optional and defaults to `{}`. When provided, it must be a flat object whose values are only strings, finite numbers, or booleans. `null`, arrays, nested objects, and non-JSON values are rejected.
+- Unknown extra fields on a log entry are tolerated and ignored. This is intentional because the required contract does not prohibit producer-specific fields, and ignoring them avoids storing undeclared data.
+
+#### Status codes
+
+- `200 OK` when at least one valid log entry is durably stored, even if other entries in the batch are rejected.
+- `400 Bad Request` when every submitted log entry is rejected, the top-level body is malformed, JSON is malformed, or the batch is empty.
+- `413 Payload Too Large` when the batch exceeds the implementation limit.
+- `500 Internal Server Error` when persistence fails. Database details are logged internally and not exposed to the client.
+
+An empty batch is treated as invalid because no entry can be accepted:
+
+```json
+{
+  "accepted": 0,
+  "rejected": [
+    {
+      "index": -1,
+      "reason": "logs must contain at least one entry"
+    }
+  ]
+}
+```
+
+#### Batch size limit
+
+The maximum accepted batch size is `5000` log entries. This keeps memory use bounded for the 256 MB application container while still allowing high-throughput load generators to send practical batches.
+
+The Fastify JSON body limit is `10 MiB`, so oversized request bodies are rejected before ingestion work begins.
+
+#### Attribute normalization
+
+Accepted entries store both:
+
+- `attributes`: the original flat JSON object with value types preserved.
+- `attributes_search`: a flat JSON object with every value converted to a string.
+
+Example:
+
+```json
+{
+  "attributes": {
+    "user_id": "42",
+    "attempts": 3,
+    "success": false
+  },
+  "attributes_search": {
+    "user_id": "42",
+    "attempts": "3",
+    "success": "false"
+  }
+}
+```
+
+#### Bulk insert strategy
+
+Accepted entries from a request are persisted with one parameterized multi-row PostgreSQL `INSERT`. User-controlled values are always passed as SQL parameters. Invalid entries are filtered before persistence, and the valid entries for one request either persist together or fail together at the insert operation level.
+
+### `GET /logs`
+
+Returns stored logs sorted by `timestamp DESC, id DESC`. The `id` tie-breaker keeps ordering deterministic when multiple logs share the same timestamp.
+
+Supported query parameters are optional and may be combined:
+
+- `service`: exact service-name equality.
+- `level`: exact level match; allowed values are `debug`, `info`, `warn`, and `error`.
+- `since`: inclusive strict timestamp filter, `timestamp >= since`.
+- `until`: exclusive strict timestamp filter, `timestamp < until`. When both `since` and `until` are provided, `until` must be later.
+- `attr.<key>`: flat attribute equality using `attributes_search`, so numbers and booleans are compared by their string-normalized values.
+- `q`: case-insensitive literal substring search against `message`.
+- `limit`: defaults to `100`, minimum `1`, maximum `1000`.
+- `cursor`: opaque cursor returned from a previous page.
+
+Example:
+
+```http
+GET /logs?service=checkout&level=error&attr.user_id=42&q=declined&limit=50
+```
+
+Response:
+
+```json
+{
+  "logs": [
+    {
+      "id": "123",
+      "timestamp": "2026-07-20T14:32:01.123Z",
+      "level": "error",
+      "service": "checkout",
+      "message": "payment declined",
+      "attributes": {
+        "user_id": "42",
+        "retries": 3
+      }
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+Pagination uses keyset pagination rather than `OFFSET`. Each query fetches `limit + 1` rows to determine whether another page exists. If another page exists, `next_cursor` is a signed, URL-safe, opaque cursor containing the last returned row's timestamp and string ID. Invalid or tampered cursors return `400 Bad Request`.
+
+`q` uses escaped `ILIKE`, so `%` and `_` in the user input are treated as literal characters, not SQL wildcards. Searching for `100%` means the substring `100%`.
+
+### `GET /logs/aggregate`
+
+Returns non-empty time buckets for matching logs.
+
+Required parameters:
+
+- `since`: inclusive strict timestamp.
+- `until`: exclusive strict timestamp; must be later than `since`.
+- `bucket`: one of `1m`, `5m`, `1h`, or `1d`.
+
+Optional filters:
+
+- `service`
+- `level`
+- `attr.<key>`
+- `q`
+- `group_by`: either `service` or `level`.
+
+Examples:
+
+```http
+GET /logs/aggregate?since=2026-07-20T14:00:00Z&until=2026-07-20T15:00:00Z&bucket=1m
+```
+
+```http
+GET /logs/aggregate?since=2026-07-20T14:00:00Z&until=2026-07-20T15:00:00Z&bucket=1m&group_by=service
+```
+
+Response:
+
+```json
+{
+  "buckets": [
+    {
+      "start": "2026-07-20T14:00:00.000Z",
+      "group": "checkout",
+      "count": 118
+    }
+  ]
+}
+```
+
+Without `group_by`, `group` is `null`. Empty bucket/group combinations are not generated.
 
 ## Database startup and migration behaviour
 
@@ -170,7 +389,7 @@ Two JSONB columns are used intentionally:
 
 - **`attributes_search`** — stores the same flat key-value map with every value coerced to a string (`"3"`, `"false"`). This column enables consistent equality matching for `attr.<key>=<value>` query parameters, where the search value is always a string regardless of the stored type.
 
-`attributes_search` is populated during ingestion (a future phase). The column exists now so the schema is stable before ingestion is implemented.
+`attributes_search` is populated during ingestion.
 
 ## Current indexes
 
@@ -183,11 +402,11 @@ Two JSONB columns are used intentionally:
 ### Why these and not others
 
 - **No GIN index on `attributes` or `attributes_search`** — GIN indexes increase write amplification significantly. They will be benchmarked against ingestion throughput before being added.
-- **No `pg_trgm` index on `message`** — full-text search is not in the required API contract.
+- **No `pg_trgm` index on `message`** — `q` substring search is implemented for correctness first; trigram indexing will be benchmarked before adding write amplification.
 - Every index increases ingestion cost. The index set will be re-evaluated after measuring real insert throughput.
 
 ## Intentional omissions
 
 - **No table partitioning** — the dataset target (~1 M rows) is small enough that a plain table is correct and easy to manage. Time-based partitioning will be considered only after retention benchmarks show it is justified.
 - **No authentication or rate limiting** — out of scope for this phase.
-- **No log ingestion or query APIs** — `POST /logs`, `GET /logs`, and `GET /logs/aggregate` are not yet implemented.
+- **No performance claims yet** — ingestion is structured for later benchmarking, but no throughput target is claimed until load testing is performed.

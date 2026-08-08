@@ -20,6 +20,7 @@ export interface Config {
   PORT: number;
   LOG_LEVEL: LogLevel;
   DATABASE_URL: string;
+  CURSOR_SECRET: string;
 }
 
 function parseNodeEnv(raw: string): NodeEnv {
@@ -61,6 +62,13 @@ function parseDatabaseUrl(raw: string): string {
   return raw;
 }
 
+function parseCursorSecret(raw: string): string {
+  if (raw.length === 0) {
+    throw new Error("Invalid CURSOR_SECRET: must not be empty");
+  }
+  return raw;
+}
+
 /**
  * Load and validate configuration.
  *
@@ -76,5 +84,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     DATABASE_URL: parseDatabaseUrl(
       env["DATABASE_URL"] ?? "postgresql://logija:logija@localhost:5432/logija",
     ),
+    CURSOR_SECRET: parseCursorSecret(env["CURSOR_SECRET"] ?? "logija-local-cursor-secret"),
   };
 }

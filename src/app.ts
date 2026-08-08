@@ -1,11 +1,14 @@
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { healthRoute, type HealthDeps } from "./routes/health.route.js";
+import { logsRoute, type LogsRouteDeps } from "./routes/logs.route.js";
 import type { Config } from "./config.js";
 
-export type AppDeps = HealthDeps;
+export type AppDeps = HealthDeps & Omit<LogsRouteDeps, "cursorSecret">;
+
+const BODY_LIMIT_BYTES = 10 * 1024 * 1024;
 
 export async function buildApp(config: Config, deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: config.LOG_LEVEL } });
+  const app = Fastify({ bodyLimit: BODY_LIMIT_BYTES, logger: { level: config.LOG_LEVEL } });
 
   // Centralised error handler.
   // 4xx errors (e.g. validation failures) pass through with their own message.
@@ -27,6 +30,12 @@ export async function buildApp(config: Config, deps: AppDeps): Promise<FastifyIn
   });
 
   await app.register(healthRoute, { checkDb: deps.checkDb });
+  await app.register(logsRoute, {
+    ingestLogs: deps.ingestLogs,
+    queryLogs: deps.queryLogs,
+    aggregateLogs: deps.aggregateLogs,
+    cursorSecret: config.CURSOR_SECRET,
+  });
 
   return app;
 }

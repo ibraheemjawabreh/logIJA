@@ -32,6 +32,6 @@
     "allowJs": false
   },
   // Include src, tests, and root-level TS config files in the type-check
-  "include": ["src", "tests", "vitest.config.ts"],
+  "include": ["src", "tests", "vitest.config.ts", "vitest.integration.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

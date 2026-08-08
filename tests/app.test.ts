@@ -5,12 +5,21 @@ import { loadConfig } from "../src/config.js";
 
 const config = loadConfig({ LOG_LEVEL: "silent" });
 const checkDb = async (): Promise<boolean> => true;
+const ingestLogs = async (): Promise<{ accepted: number; rejected: [] }> => ({
+  accepted: 0,
+  rejected: [],
+});
+const queryLogs = async (): Promise<{ logs: []; next_cursor: null }> => ({
+  logs: [],
+  next_cursor: null,
+});
+const aggregateLogs = async (): Promise<{ buckets: [] }> => ({ buckets: [] });
 
 describe("Application — general behaviour", () => {
   let app: FastifyInstance;
 
   beforeEach(async () => {
-    app = await buildApp(config, { checkDb });
+    app = await buildApp(config, { checkDb, ingestLogs, queryLogs, aggregateLogs });
   });
 
   afterEach(async () => {
@@ -30,7 +39,7 @@ describe("Application — general behaviour", () => {
 
 describe("Application — lifecycle", () => {
   it("closes cleanly without throwing", async () => {
-    const app = await buildApp(config, { checkDb });
+    const app = await buildApp(config, { checkDb, ingestLogs, queryLogs, aggregateLogs });
     await expect(app.close()).resolves.not.toThrow();
   });
 });

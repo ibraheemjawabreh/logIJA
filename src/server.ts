@@ -3,6 +3,8 @@ import { createPool } from "./database/pool.js";
 import { runMigrations } from "./database/migrate.js";
 import { createDbHealthChecker } from "./database/health.js";
 import { buildApp } from "./app.js";
+import { createLogRepository } from "./logs/log.repository.js";
+import { createLogIngestionService } from "./logs/log.service.js";
 
 /**
  * Startup sequence:
@@ -24,7 +26,16 @@ async function main(): Promise<void> {
   await runMigrations(pool);
 
   const checkDb = createDbHealthChecker(pool);
-  const app = await buildApp(config, { checkDb });
+  const logsRepository = createLogRepository(pool);
+  const logsService = createLogIngestionService(logsRepository, {
+    cursorSecret: config.CURSOR_SECRET,
+  });
+  const app = await buildApp(config, {
+    checkDb,
+    ingestLogs: logsService.ingestLogs,
+    queryLogs: logsService.queryLogs,
+    aggregateLogs: logsService.aggregateLogs,
+  });
 
   let isShuttingDown = false;
 

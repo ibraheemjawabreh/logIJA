@@ -5,12 +5,26 @@ import { loadConfig } from "../src/config.js";
 
 // Use silent log level so Vitest output is not polluted by Fastify logs
 const config = loadConfig({ LOG_LEVEL: "silent" });
+const ingestLogs = async (): Promise<{ accepted: number; rejected: [] }> => ({
+  accepted: 0,
+  rejected: [],
+});
+const queryLogs = async (): Promise<{ logs: []; next_cursor: null }> => ({
+  logs: [],
+  next_cursor: null,
+});
+const aggregateLogs = async (): Promise<{ buckets: [] }> => ({ buckets: [] });
 
 describe("GET /health — database available", () => {
   let app: FastifyInstance;
 
   beforeEach(async () => {
-    app = await buildApp(config, { checkDb: async () => true });
+    app = await buildApp(config, {
+      checkDb: async () => true,
+      ingestLogs,
+      queryLogs,
+      aggregateLogs,
+    });
   });
 
   afterEach(async () => {
@@ -32,7 +46,12 @@ describe("GET /health — database unavailable", () => {
   let app: FastifyInstance;
 
   beforeEach(async () => {
-    app = await buildApp(config, { checkDb: async () => false });
+    app = await buildApp(config, {
+      checkDb: async () => false,
+      ingestLogs,
+      queryLogs,
+      aggregateLogs,
+    });
   });
 
   afterEach(async () => {
@@ -56,6 +75,9 @@ describe("GET /health — checkDb throws", () => {
       checkDb: async () => {
         throw new Error("connection refused");
       },
+      ingestLogs,
+      queryLogs,
+      aggregateLogs,
     });
     const res = await app.inject({ method: "GET", url: "/health" });
     expect(res.statusCode).toBe(503);

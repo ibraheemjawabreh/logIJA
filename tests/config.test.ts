@@ -9,6 +9,7 @@ describe("loadConfig — defaults", () => {
     expect(cfg.PORT).toBe(8080);
     expect(cfg.LOG_LEVEL).toBe("info");
     expect(cfg.DATABASE_URL).toBe("postgresql://logija:logija@localhost:5432/logija");
+    expect(cfg.CURSOR_SECRET).toBe("logija-local-cursor-secret");
   });
 });
 
@@ -83,5 +84,15 @@ describe("loadConfig — DATABASE_URL", () => {
 
   it("throws on a non-postgres protocol", () => {
     expect(() => loadConfig({ DATABASE_URL: "mysql://user:pass@host/db" })).toThrow(/DATABASE_URL/);
+  });
+});
+
+describe("loadConfig - CURSOR_SECRET", () => {
+  it("accepts a custom cursor secret", () => {
+    expect(loadConfig({ CURSOR_SECRET: "custom-secret" }).CURSOR_SECRET).toBe("custom-secret");
+  });
+
+  it("throws on an empty CURSOR_SECRET", () => {
+    expect(() => loadConfig({ CURSOR_SECRET: "" })).toThrow(/CURSOR_SECRET/);
   });
 });
