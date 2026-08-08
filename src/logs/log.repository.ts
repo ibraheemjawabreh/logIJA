@@ -1,4 +1,7 @@
 import type { Pool } from "pg";
+import { from as copyFrom } from "pg-copy-streams";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { buildAggregateLogsQuery, buildListLogsQuery } from "./log.query-builder.js";
 import type {
   AggregateBucket,
@@ -11,8 +14,6 @@ import type {
   ValidatedLog,
   ValidatedLogQuery,
 } from "./log.types.js";
-
-const COLUMNS_PER_LOG = 6;
 
 interface LogRow {
   id: string;
@@ -69,34 +70,39 @@ export function createLogRepository(pool: Pool): LogRepository {
         return;
       }
 
-      const values: unknown[] = [];
-      const rows = logs.map((log, index) => {
-        const base = index * COLUMNS_PER_LOG;
-        values.push(
-          log.timestamp,
-          log.level,
-          log.service,
-          log.message,
-          JSON.stringify(log.attributes),
-          JSON.stringify(log.attributesSearch),
+      const client = await pool.connect();
+      try {
+        const stream = client.query(
+          copyFrom(
+            "COPY logs (timestamp, level, service, message, attributes, attributes_search) FROM STDIN WITH (FORMAT csv)",
+          ),
         );
-        return `($${base + 1}::timestamptz, $${base + 2}::text, $${base + 3}::text, $${base + 4}::text, $${base + 5}::jsonb, $${base + 6}::jsonb)`;
-      });
 
-      await pool.query(
-        `
-          INSERT INTO logs (
-            timestamp,
-            level,
-            service,
-            message,
-            attributes,
-            attributes_search
-          )
-          VALUES ${rows.join(", ")}
-        `,
-        values,
-      );
+        const rowIterator = function* () {
+          for (let i = 0; i < logs.length; i++) {
+            const log = logs[i];
+            if (!log) continue;
+
+            const t = log.timestamp;
+            const l = log.level;
+
+            // In CSV format, quotes must be escaped by doubling them.
+            // Wrapping the entire field in quotes handles any internal delimiters, newlines, or quotes safely.
+            const escapeCsv = (str: string) => `"${str.replaceAll('"', '""')}"`;
+
+            const s = escapeCsv(log.service);
+            const m = escapeCsv(log.message);
+            const a = escapeCsv(JSON.stringify(log.attributes));
+            const search = escapeCsv(JSON.stringify(log.attributesSearch));
+
+            yield `${t},${l},${s},${m},${a},${search}\n`;
+          }
+        }();
+
+        await pipeline(Readable.from(rowIterator), stream);
+      } finally {
+        client.release();
+      }
     },
 
     async listLogs(query: ValidatedLogQuery): Promise<readonly PersistedLog[]> {

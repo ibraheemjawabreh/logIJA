@@ -30,11 +30,13 @@
   "license": "ISC",
   "dependencies": {
     "fastify": "^5.11.3",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "pg-copy-streams": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@types/pg": "^8.11.14",
+    "@types/pg-copy-streams": "^1.2.5",
     "eslint": "^9.31.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.6.2",
