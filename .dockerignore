@@ -1,0 +1,29 @@
+# Build context exclusions for Docker
+# Keep this lean — only what the builder stage needs enters the context.
+
+node_modules/
+dist/
+coverage/
+.git/
+
+# Test files are not needed in the image
+tests/
+
+# Development-only config files
+.prettierrc
+.prettierignore
+eslint.config.js
+vitest.config.ts
+
+# Documentation
+*.md
+
+# Never bake secrets into the image
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Logs
+*.log

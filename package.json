@@ -1,0 +1,38 @@
+{
+  "name": "logija",
+  "version": "1.0.0",
+  "description": "LogPulse — High-performance Log Ingestion and Query Service",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc --project tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --project tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "fastify": "^5.11.3",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.11.14",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "tsx": "^4.23.11",
+    "typescript": "^6.0.3",
+    "typescript-6": "npm:typescript@^6.0.3",
+    "typescript-eslint": "^8.38.0",
+    "vitest": "^3.2.4"
+  }
+}

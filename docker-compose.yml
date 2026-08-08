@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+
+    environment:
+      POSTGRES_DB: logija
+      POSTGRES_USER: logija
+      POSTGRES_PASSWORD: logija
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U logija -d logija" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    cpus: "1.0"
+    mem_limit: 1g
+
+  app:
+    build: .
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      NODE_ENV: production
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://logija:logija@postgres:5432/logija
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    cpus: "0.5"
+    mem_limit: 256m
+
+volumes:
+  postgres_data:

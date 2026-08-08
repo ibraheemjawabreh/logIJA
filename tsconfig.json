@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    // Environment — Node.js ESM with nodenext resolution
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2022",
+    "lib": ["es2022"],
+    "types": ["node"],
+
+    // Type-check only; tsconfig.build.json handles emit
+    "noEmit": true,
+
+    // Strict type-safety
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Style guards
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Module hygiene
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+
+    // No JS sources
+    "allowJs": false
+  },
+  // Include src, tests, and root-level TS config files in the type-check
+  "include": ["src", "tests", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

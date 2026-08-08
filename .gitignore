@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+
+# Local environment files with secrets — never commit these
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Allow the documented example (contains no secrets)
+!.env.example
