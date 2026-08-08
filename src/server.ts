@@ -5,6 +5,9 @@ import { createDbHealthChecker } from "./database/health.js";
 import { buildApp } from "./app.js";
 import { createLogRepository } from "./logs/log.repository.js";
 import { createLogIngestionService } from "./logs/log.service.js";
+import { createRetentionRepository } from "./retention/retention.repository.js";
+import { createRetentionService } from "./retention/retention.service.js";
+import { createRetentionWorker } from "./retention/retention.worker.js";
 
 /**
  * Startup sequence:
@@ -19,7 +22,7 @@ import { createLogIngestionService } from "./logs/log.service.js";
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  const pool = createPool(config.DATABASE_URL);
+  const pool = createPool(config.DATABASE_URL, config.DB_POOL_MAX);
 
   // Migrations also act as the DB connectivity check at startup.
   // If the DB is unreachable, runMigrations throws and main() rejects.
@@ -30,12 +33,27 @@ async function main(): Promise<void> {
   const logsService = createLogIngestionService(logsRepository, {
     cursorSecret: config.CURSOR_SECRET,
   });
+  const retentionRepository = createRetentionRepository(pool);
+  const retentionService = createRetentionService(retentionRepository, {
+    retentionDays: config.RETENTION_DAYS,
+    intervalSeconds: config.RETENTION_INTERVAL_SECONDS,
+    batchSize: config.RETENTION_BATCH_SIZE,
+    maxBatchesPerCycle: config.RETENTION_MAX_BATCHES_PER_CYCLE,
+  });
   const app = await buildApp(config, {
     checkDb,
     ingestLogs: logsService.ingestLogs,
     queryLogs: logsService.queryLogs,
     aggregateLogs: logsService.aggregateLogs,
   });
+  const retentionWorker = createRetentionWorker(retentionService, {
+    intervalSeconds: config.RETENTION_INTERVAL_SECONDS,
+    logger: {
+      info: (message, data) => app.log.info(data ?? {}, message),
+      error: (message, data) => app.log.error(data ?? {}, message),
+    },
+  });
+  retentionWorker.start();
 
   let isShuttingDown = false;
 
@@ -45,6 +63,7 @@ async function main(): Promise<void> {
 
     app.log.info(`Received ${signal}. Shutting down gracefully...`);
     try {
+      retentionWorker.stop();
       await app.close();
       await pool.end();
       app.log.info("Server closed successfully.");

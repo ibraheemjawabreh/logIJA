@@ -1,4 +1,4 @@
-# LogPulse
+﻿# LogPulse
 
 A high-performance structured log ingestion, querying, aggregation, and retention service built as an internship final project.
 
@@ -10,13 +10,13 @@ LogPulse accepts structured application logs, stores them durably in PostgreSQL,
 
 ```
 src/
-  config.ts              ← typed environment validation (fail-fast)
-  app.ts                 ← buildApp() factory (testable without a real port)
-  server.ts              ← startup sequence + graceful shutdown
+  config.ts              â†گ typed environment validation (fail-fast)
+  app.ts                 â†گ buildApp() factory (testable without a real port)
+  server.ts              â†گ startup sequence + graceful shutdown
   database/
-    pool.ts              ← pg connection pool
-    migrate.ts           ← SQL migration runner
-    health.ts            ← lightweight DB health check
+    pool.ts              â†گ pg connection pool
+    migrate.ts           â†گ SQL migration runner
+    health.ts            â†گ lightweight DB health check
   logs/
     log.types.ts         ingestion request/result types
     log.validation.ts    pure per-entry validation + normalization
@@ -26,10 +26,10 @@ src/
     log.service.ts       batch validation + persistence coordination
     log.repository.ts    bulk insert + query execution
   routes/
-    health.route.ts      ← GET /health
+    health.route.ts      â†گ GET /health
     logs.route.ts        POST /logs
 migrations/
-  001_initial_logs.sql   ← logs table + initial indexes
+  001_initial_logs.sql   â†گ logs table + initial indexes
 tests/
   config.test.ts
   health.test.ts
@@ -45,6 +45,16 @@ tests/
     logs.integration.ts
 ```
 
+Additional hardening and benchmark assets:
+
+```text
+src/retention/             bounded retention repository/service/worker
+scripts/                   smoke, demo, HTTP seed, and local benchmark helpers
+load-tests/                k6 ingestion/query/mixed workload scripts
+docs/PERFORMANCE.md        measured performance report
+.github/workflows/ci.yml   CI with PostgreSQL integration and smoke test
+```
+
 ## Requirements
 
 - Node.js 24 LTS
@@ -58,19 +68,24 @@ tests/
 git clone <repo>
 cd logIJA
 npm install
-cp .env.example .env   # optional — defaults work out of the box
+cp .env.example .env   # optional â€” defaults work out of the box
 ```
 
 ## Environment configuration
 
-| Variable        | Default                                            | Allowed values                                               |
-| --------------- | -------------------------------------------------- | ------------------------------------------------------------ |
-| `NODE_ENV`      | `development`                                      | `development`, `test`, `production`                          |
-| `HOST`          | `0.0.0.0`                                          | any non-empty string                                         |
-| `PORT`          | `8080`                                             | integer 1–65535                                              |
-| `LOG_LEVEL`     | `info`                                             | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent` |
-| `DATABASE_URL`  | `postgresql://logija:logija@localhost:5432/logija` | any `postgresql://` or `postgres://` URL                     |
-| `CURSOR_SECRET` | `logija-local-cursor-secret`                       | any non-empty string                                         |
+| Variable                          | Default                                            | Allowed values                                               |
+| --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| `NODE_ENV`                        | `development`                                      | `development`, `test`, `production`                          |
+| `HOST`                            | `0.0.0.0`                                          | any non-empty string                                         |
+| `PORT`                            | `8080`                                             | integer 1â€“65535                                            |
+| `LOG_LEVEL`                       | `info`                                             | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent` |
+| `DATABASE_URL`                    | `postgresql://logija:logija@localhost:5432/logija` | any `postgresql://` or `postgres://` URL                     |
+| `CURSOR_SECRET`                   | `logija-local-cursor-secret`                       | any non-empty string                                         |
+| `DB_POOL_MAX`                     | `10`                                               | integer 1-100                                                |
+| `RETENTION_DAYS`                  | `30`                                               | integer 1-3650                                               |
+| `RETENTION_INTERVAL_SECONDS`      | `60`                                               | integer 1-86400                                              |
+| `RETENTION_BATCH_SIZE`            | `10000`                                            | integer 1-100000                                             |
+| `RETENTION_MAX_BATCHES_PER_CYCLE` | `10`                                               | integer 1-1000                                               |
 
 An explicit invalid value causes an immediate startup failure with a descriptive error message. A missing variable silently uses the default.
 
@@ -95,10 +110,25 @@ npm test
 # Run PostgreSQL integration tests (requires PostgreSQL)
 npm run test:integration
 
+# Run required API contract smoke test against a running server
+npm run smoke
+
+# Run demo sequence against a running server
+npm run demo
+
+# Local HTTP benchmarks
+npm run benchmark:ingest
+npm run benchmark:query
+
+# k6 benchmarks, requires k6 installed separately
+npm run load:ingest
+npm run load:query
+npm run load:mixed
+
 # Watch mode
 npm run test:watch
 
-# Compile TypeScript → dist/
+# Compile TypeScript â†’ dist/
 npm run build
 
 # Run all gates sequentially
@@ -385,9 +415,9 @@ CREATE TABLE logs (
 
 Two JSONB columns are used intentionally:
 
-- **`attributes`** — stores the log's original attribute values with their native JSON types. A numeric `retries: 3` stays a number; a boolean `success: false` stays a boolean. This column is returned in API responses so callers receive the original types.
+- **`attributes`** â€” stores the log's original attribute values with their native JSON types. A numeric `retries: 3` stays a number; a boolean `success: false` stays a boolean. This column is returned in API responses so callers receive the original types.
 
-- **`attributes_search`** — stores the same flat key-value map with every value coerced to a string (`"3"`, `"false"`). This column enables consistent equality matching for `attr.<key>=<value>` query parameters, where the search value is always a string regardless of the stored type.
+- **`attributes_search`** â€” stores the same flat key-value map with every value coerced to a string (`"3"`, `"false"`). This column enables consistent equality matching for `attr.<key>=<value>` query parameters, where the search value is always a string regardless of the stored type.
 
 `attributes_search` is populated during ingestion.
 
@@ -401,12 +431,76 @@ Two JSONB columns are used intentionally:
 
 ### Why these and not others
 
-- **No GIN index on `attributes` or `attributes_search`** — GIN indexes increase write amplification significantly. They will be benchmarked against ingestion throughput before being added.
-- **No `pg_trgm` index on `message`** — `q` substring search is implemented for correctness first; trigram indexing will be benchmarked before adding write amplification.
+- **No GIN index on `attributes` or `attributes_search`** â€” GIN indexes increase write amplification significantly. They will be benchmarked against ingestion throughput before being added.
+- **No `pg_trgm` index on `message`** â€” `q` substring search is implemented for correctness first; trigram indexing will be benchmarked before adding write amplification.
 - Every index increases ingestion cost. The index set will be re-evaluated after measuring real insert throughput.
 
 ## Intentional omissions
 
-- **No table partitioning** — the dataset target (~1 M rows) is small enough that a plain table is correct and easy to manage. Time-based partitioning will be considered only after retention benchmarks show it is justified.
-- **No authentication or rate limiting** — out of scope for this phase.
-- **No performance claims yet** — ingestion is structured for later benchmarking, but no throughput target is claimed until load testing is performed.
+The omissions below refer only to optional product features and risky architectural changes. Performance measurements for this final phase are documented in the following sections and in `docs/PERFORMANCE.md`.
+
+## Final Architecture
+
+```text
+Clients
+  |
+  v
+Fastify API
+  |
+  +-- Health readiness
+  +-- Ingestion validation
+  +-- Query parsing
+  +-- Signed cursor handling
+  +-- Retention worker
+  |
+  v
+node-postgres pool
+  |
+  v
+PostgreSQL logs table
+```
+
+## Retention Strategy
+
+Retention starts after migrations and runs periodically. Defaults keep logs for `30` days, run every `60` seconds, delete up to `10000` rows per batch, and run up to `10` batches per cycle.
+
+Deletion is bounded with a CTE that selects expired IDs by `timestamp ASC, id ASC` and deletes only that batch. This keeps transactions short, avoids one large unbounded delete, and reduces disruption to ingestion. The worker prevents overlapping cycles and logs cycle-level results only.
+
+## CI
+
+GitHub Actions runs `npm ci`, typecheck, lint, format check, unit tests, build, PostgreSQL integration tests, and a required API smoke test covering:
+
+- `GET /health`
+- `POST /logs`
+- `GET /logs`
+- `GET /logs/aggregate`
+
+Heavy million-row load tests are intentionally not run on every CI execution.
+
+## Performance Methodology
+
+Benchmarks target the HTTP API. Local Docker limits were:
+
+- app: `0.5 CPU`, `256 MiB`
+- PostgreSQL: `1 CPU`, `1 GiB`
+
+The local environment was Windows Docker Desktop. k6 was not installed locally, so k6 scripts were added for reproducible external load testing, while actual local measurements used the checked-in Node HTTP benchmark scripts.
+
+Detailed results are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
+Summary:
+
+- Million-row dataset was created through `POST /logs`.
+- Final rows: `1,000,010`.
+- Table plus indexes: `494 MB`.
+- Best local accepted ingestion rate: `8824.08 logs/sec`.
+- Target `15000 logs/sec`: not achieved locally.
+- Recent 1-hour aggregation p95: `410.48 ms`.
+- Full-dataset aggregation p95: `1752.25 ms`.
+
+## Known Limitations
+
+- No authentication, rate limiting, multi-tenancy, dashboard, alerts, or live-tail.
+- Full-dataset aggregation over approximately one million rows misses the `p95 < 1s` target.
+- k6 must be installed separately to run `npm run load:*`.
+- Windows Docker Desktop resource readings are approximate.

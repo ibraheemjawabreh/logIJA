@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: logija
+          POSTGRES_USER: logija
+          POSTGRES_PASSWORD: logija
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U logija -d logija"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://logija:logija@localhost:5432/logija
+      INTEGRATION_DATABASE_URL: postgresql://logija:logija@localhost:5432/logija
+      NODE_ENV: test
+      LOG_LEVEL: silent
+      CURSOR_SECRET: ci-cursor-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:integration
+
+      - name: Start API for smoke test
+        run: |
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat server.log
+          exit 1
+
+      - run: npm run smoke
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            kill "$(cat server.pid)" || true
+          fi

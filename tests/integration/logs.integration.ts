@@ -7,6 +7,8 @@ import { loadConfig } from "../../src/config.js";
 import { runMigrations } from "../../src/database/migrate.js";
 import { createLogRepository } from "../../src/logs/log.repository.js";
 import { createLogIngestionService } from "../../src/logs/log.service.js";
+import { createRetentionRepository } from "../../src/retention/retention.repository.js";
+import { createRetentionService } from "../../src/retention/retention.service.js";
 import type { AggregateResponse, LogListResponse } from "../../src/logs/log.types.js";
 
 interface PersistedLogRow {
@@ -417,5 +419,65 @@ describe("logs PostgreSQL integration", () => {
       { start: "2006-07-20T14:05:00.000Z", group: null, count: 1 },
     ]);
     expect(empty.json<AggregateResponse>()).toEqual({ buckets: [] });
+  });
+
+  it("deletes expired rows in real PostgreSQL batches while keeping non-expired rows", async () => {
+    const retentionExpired = `${prefix}-retention-expired`;
+    const retentionFresh = `${prefix}-retention-fresh`;
+    const repository = createLogRepository(pool);
+    const ingestionService = createLogIngestionService(repository, {
+      now: () => new Date("2026-08-08T00:00:00.000Z"),
+      cursorSecret,
+    });
+    await ingestionService.ingestLogs([
+      {
+        timestamp: "2000-01-01T00:00:00.000Z",
+        level: "info",
+        service: retentionExpired,
+        message: "expired one",
+        attributes: {},
+      },
+      {
+        timestamp: "2000-01-01T00:00:01.000Z",
+        level: "info",
+        service: retentionExpired,
+        message: "expired two",
+        attributes: {},
+      },
+      {
+        timestamp: "2026-08-07T00:00:00.000Z",
+        level: "info",
+        service: retentionFresh,
+        message: "fresh",
+        attributes: {},
+      },
+    ]);
+
+    const retentionService = createRetentionService(createRetentionRepository(pool), {
+      retentionDays: 8_000,
+      intervalSeconds: 60,
+      batchSize: 1,
+      maxBatchesPerCycle: 10,
+      now: () => new Date("2026-08-08T00:00:00.000Z"),
+    });
+
+    await expect(retentionService.cleanupExpiredLogs()).resolves.toMatchObject({
+      deleted: 2,
+      batches: 2,
+      hasMore: false,
+    });
+
+    const remaining = await pool.query<{ service: string; count: string }>(
+      `
+        SELECT service, COUNT(*)::text AS count
+        FROM logs
+        WHERE service IN ($1, $2)
+        GROUP BY service
+        ORDER BY service
+      `,
+      [retentionExpired, retentionFresh],
+    );
+
+    expect(remaining.rows).toEqual([{ service: retentionFresh, count: "1" }]);
   });
 });

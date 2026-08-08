@@ -15,7 +15,15 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
+    "smoke": "tsx scripts/contract-smoke.ts",
+    "demo": "tsx scripts/demo.ts",
+    "benchmark:ingest": "tsx scripts/benchmark-ingest.ts",
+    "benchmark:query": "tsx scripts/benchmark-query.ts",
+    "seed:http": "tsx scripts/seed-http.ts",
+    "load:ingest": "k6 run load-tests/ingestion.js",
+    "load:mixed": "k6 run load-tests/mixed-load.js",
+    "load:query": "k6 run load-tests/query.js"
   },
   "keywords": [],
   "author": "",

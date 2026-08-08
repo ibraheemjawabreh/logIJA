@@ -21,6 +21,11 @@ export interface Config {
   LOG_LEVEL: LogLevel;
   DATABASE_URL: string;
   CURSOR_SECRET: string;
+  DB_POOL_MAX: number;
+  RETENTION_DAYS: number;
+  RETENTION_INTERVAL_SECONDS: number;
+  RETENTION_BATCH_SIZE: number;
+  RETENTION_MAX_BATCHES_PER_CYCLE: number;
 }
 
 function parseNodeEnv(raw: string): NodeEnv {
@@ -69,6 +74,14 @@ function parseCursorSecret(raw: string): string {
   return raw;
 }
 
+function parsePositiveInteger(raw: string, name: string, max: number): number {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > max) {
+    throw new Error(`Invalid ${name}: "${raw}". Must be an integer between 1 and ${max}`);
+  }
+  return value;
+}
+
 /**
  * Load and validate configuration.
  *
@@ -85,5 +98,22 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       env["DATABASE_URL"] ?? "postgresql://logija:logija@localhost:5432/logija",
     ),
     CURSOR_SECRET: parseCursorSecret(env["CURSOR_SECRET"] ?? "logija-local-cursor-secret"),
+    DB_POOL_MAX: parsePositiveInteger(env["DB_POOL_MAX"] ?? "10", "DB_POOL_MAX", 100),
+    RETENTION_DAYS: parsePositiveInteger(env["RETENTION_DAYS"] ?? "30", "RETENTION_DAYS", 3650),
+    RETENTION_INTERVAL_SECONDS: parsePositiveInteger(
+      env["RETENTION_INTERVAL_SECONDS"] ?? "60",
+      "RETENTION_INTERVAL_SECONDS",
+      86_400,
+    ),
+    RETENTION_BATCH_SIZE: parsePositiveInteger(
+      env["RETENTION_BATCH_SIZE"] ?? "10000",
+      "RETENTION_BATCH_SIZE",
+      100_000,
+    ),
+    RETENTION_MAX_BATCHES_PER_CYCLE: parsePositiveInteger(
+      env["RETENTION_MAX_BATCHES_PER_CYCLE"] ?? "10",
+      "RETENTION_MAX_BATCHES_PER_CYCLE",
+      1_000,
+    ),
   };
 }
