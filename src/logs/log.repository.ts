@@ -1,7 +1,5 @@
 import type { Pool } from "pg";
-import { from as copyFrom } from "pg-copy-streams";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import type { IngestStrategy } from "../config.js";
 import { buildAggregateLogsQuery, buildListLogsQuery } from "./log.query-builder.js";
 import type {
   AggregateBucket,
@@ -28,6 +26,68 @@ interface AggregateRow {
   start: Date | string;
   group: string | null;
   count: string;
+}
+
+interface InsertQuery {
+  text: string;
+  values: unknown[];
+}
+
+const INSERT_COLUMNS = "(timestamp, level, service, message, attributes, attributes_search)";
+const UNNEST_INSERT_SQL = `
+  INSERT INTO logs ${INSERT_COLUMNS}
+  SELECT *
+  FROM unnest(
+    $1::timestamptz[],
+    $2::text[],
+    $3::text[],
+    $4::text[],
+    $5::jsonb[],
+    $6::jsonb[]
+  )
+`;
+
+function stringifyAttributes(log: ValidatedLog): readonly [string, string] {
+  return [JSON.stringify(log.attributes), JSON.stringify(log.attributesSearch)];
+}
+
+function buildMultirowInsert(logs: readonly ValidatedLog[]): InsertQuery {
+  const values: unknown[] = [];
+  const rows = logs.map((log, index) => {
+    const offset = index * 6;
+    const [attributes, attributesSearch] = stringifyAttributes(log);
+    values.push(log.timestamp, log.level, log.service, log.message, attributes, attributesSearch);
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}::jsonb, $${offset + 6}::jsonb)`;
+  });
+
+  return {
+    text: `INSERT INTO logs ${INSERT_COLUMNS} VALUES ${rows.join(", ")}`,
+    values,
+  };
+}
+
+function buildUnnestInsert(logs: readonly ValidatedLog[]): InsertQuery {
+  const timestamps: string[] = [];
+  const levels: string[] = [];
+  const services: string[] = [];
+  const messages: string[] = [];
+  const attributes: string[] = [];
+  const attributesSearch: string[] = [];
+
+  for (const log of logs) {
+    const [serializedAttributes, serializedAttributesSearch] = stringifyAttributes(log);
+    timestamps.push(log.timestamp);
+    levels.push(log.level);
+    services.push(log.service);
+    messages.push(log.message);
+    attributes.push(serializedAttributes);
+    attributesSearch.push(serializedAttributesSearch);
+  }
+
+  return {
+    text: UNNEST_INSERT_SQL,
+    values: [timestamps, levels, services, messages, attributes, attributesSearch],
+  };
 }
 
 function isLogAttributeValue(value: unknown): value is LogAttributeValue {
@@ -63,45 +123,26 @@ function toSafeCount(value: string): number {
   return count;
 }
 
-export function createLogRepository(pool: Pool): LogRepository {
+export function createLogRepository(
+  pool: Pool,
+  ingestStrategy: IngestStrategy = "unnest",
+): LogRepository {
   return {
     async insertLogs(logs: readonly ValidatedLog[]): Promise<void> {
       if (logs.length === 0) {
         return;
       }
 
-      const client = await pool.connect();
-      try {
-        const stream = client.query(
-          copyFrom(
-            "COPY logs (timestamp, level, service, message, attributes, attributes_search) FROM STDIN WITH (FORMAT csv)",
-          ),
-        );
+      if (ingestStrategy === "multirow") {
+        const query = buildMultirowInsert(logs);
+        await pool.query(query.text, query.values);
+        return;
+      }
 
-        const rowIterator = function* () {
-          for (let i = 0; i < logs.length; i++) {
-            const log = logs[i];
-            if (!log) continue;
-
-            const t = log.timestamp;
-            const l = log.level;
-
-            // In CSV format, quotes must be escaped by doubling them.
-            // Wrapping the entire field in quotes handles any internal delimiters, newlines, or quotes safely.
-            const escapeCsv = (str: string) => `"${str.replaceAll('"', '""')}"`;
-
-            const s = escapeCsv(log.service);
-            const m = escapeCsv(log.message);
-            const a = escapeCsv(JSON.stringify(log.attributes));
-            const search = escapeCsv(JSON.stringify(log.attributesSearch));
-
-            yield `${t},${l},${s},${m},${a},${search}\n`;
-          }
-        }();
-
-        await pipeline(Readable.from(rowIterator), stream);
-      } finally {
-        client.release();
+      if (ingestStrategy === "unnest") {
+        const query = buildUnnestInsert(logs);
+        await pool.query(query.text, query.values);
+        return;
       }
     },
 

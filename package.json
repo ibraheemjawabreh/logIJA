@@ -19,6 +19,8 @@
     "smoke": "tsx scripts/contract-smoke.ts",
     "demo": "tsx scripts/demo.ts",
     "benchmark:ingest": "tsx scripts/benchmark-ingest.ts",
+    "benchmark:filtered-query": "tsx scripts/benchmark-filtered-query.ts",
+    "benchmark:mixed": "tsx scripts/benchmark-mixed.ts",
     "benchmark:query": "tsx scripts/benchmark-query.ts",
     "seed:http": "tsx scripts/seed-http.ts",
     "load:ingest": "k6 run load-tests/ingestion.js",
@@ -30,13 +32,11 @@
   "license": "ISC",
   "dependencies": {
     "fastify": "^5.11.3",
-    "pg": "^8.16.3",
-    "pg-copy-streams": "^7.0.0"
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@types/pg": "^8.11.14",
-    "@types/pg-copy-streams": "^1.2.5",
     "eslint": "^9.31.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.6.2",

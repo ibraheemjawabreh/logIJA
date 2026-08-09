@@ -11,6 +11,7 @@ describe("loadConfig — defaults", () => {
     expect(cfg.DATABASE_URL).toBe("postgresql://logija:logija@localhost:5432/logija");
     expect(cfg.CURSOR_SECRET).toBe("logija-local-cursor-secret");
     expect(cfg.DB_POOL_MAX).toBe(10);
+    expect(cfg.INGEST_STRATEGY).toBe("multirow");
     expect(cfg.RETENTION_DAYS).toBe(30);
     expect(cfg.RETENTION_INTERVAL_SECONDS).toBe(60);
     expect(cfg.RETENTION_BATCH_SIZE).toBe(10000);
@@ -129,5 +130,15 @@ describe("loadConfig - retention and pool settings", () => {
     ["RETENTION_BATCH_SIZE", "abc"],
   ])("rejects invalid %s", (key, value) => {
     expect(() => loadConfig({ [key]: value })).toThrow(new RegExp(key));
+  });
+});
+
+describe("loadConfig - ingestion strategy", () => {
+  it.each(["multirow", "unnest"] as const)("accepts %s", (INGEST_STRATEGY) => {
+    expect(loadConfig({ INGEST_STRATEGY }).INGEST_STRATEGY).toBe(INGEST_STRATEGY);
+  });
+
+  it("rejects an unsupported strategy", () => {
+    expect(() => loadConfig({ INGEST_STRATEGY: "values" })).toThrow(/INGEST_STRATEGY/);
   });
 });

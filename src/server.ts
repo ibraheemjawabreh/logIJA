@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   await runMigrations(pool);
 
   const checkDb = createDbHealthChecker(pool);
-  const logsRepository = createLogRepository(pool);
+  const logsRepository = createLogRepository(pool, config.INGEST_STRATEGY);
   const logsService = createLogIngestionService(logsRepository, {
     cursorSecret: config.CURSOR_SECRET,
   });

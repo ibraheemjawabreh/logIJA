@@ -36,6 +36,7 @@ function makeLog(index: number): Record<string, unknown> {
   };
 }
 
+const started = performance.now();
 const end = Date.now() + durationSeconds * 1_000;
 const latencies: number[] = [];
 let attempted = 0;
@@ -72,13 +73,13 @@ async function worker(workerId: number): Promise<void> {
 
 await Promise.all(Array.from({ length: concurrency }, (_, index) => worker(index)));
 
-const elapsedSeconds = durationSeconds;
+const elapsedSeconds = (performance.now() - started) / 1_000;
 console.log(
   JSON.stringify(
     {
       baseUrl,
       batchSize,
-      durationSeconds,
+      durationSeconds: Number(elapsedSeconds.toFixed(2)),
       concurrency,
       attempted,
       accepted,

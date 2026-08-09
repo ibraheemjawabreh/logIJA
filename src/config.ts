@@ -10,9 +10,11 @@
 
 const VALID_NODE_ENVS = ["development", "test", "production"] as const;
 const VALID_LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "fatal", "silent"] as const;
+const VALID_INGEST_STRATEGIES = ["multirow", "unnest"] as const;
 
 type NodeEnv = (typeof VALID_NODE_ENVS)[number];
 type LogLevel = (typeof VALID_LOG_LEVELS)[number];
+export type IngestStrategy = (typeof VALID_INGEST_STRATEGIES)[number];
 
 export interface Config {
   NODE_ENV: NodeEnv;
@@ -22,6 +24,7 @@ export interface Config {
   DATABASE_URL: string;
   CURSOR_SECRET: string;
   DB_POOL_MAX: number;
+  INGEST_STRATEGY: IngestStrategy;
   RETENTION_DAYS: number;
   RETENTION_INTERVAL_SECONDS: number;
   RETENTION_BATCH_SIZE: number;
@@ -55,6 +58,15 @@ function parseLogLevel(raw: string): LogLevel {
     throw new Error(`Invalid LOG_LEVEL: "${raw}". Must be one of: ${VALID_LOG_LEVELS.join(", ")}`);
   }
   return raw as LogLevel;
+}
+
+function parseIngestStrategy(raw: string): IngestStrategy {
+  if (!(VALID_INGEST_STRATEGIES as readonly string[]).includes(raw)) {
+    throw new Error(
+      `Invalid INGEST_STRATEGY: "${raw}". Must be one of: ${VALID_INGEST_STRATEGIES.join(", ")}`,
+    );
+  }
+  return raw as IngestStrategy;
 }
 
 function parseDatabaseUrl(raw: string): string {
@@ -99,6 +111,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ),
     CURSOR_SECRET: parseCursorSecret(env["CURSOR_SECRET"] ?? "logija-local-cursor-secret"),
     DB_POOL_MAX: parsePositiveInteger(env["DB_POOL_MAX"] ?? "10", "DB_POOL_MAX", 100),
+    INGEST_STRATEGY: parseIngestStrategy(env["INGEST_STRATEGY"] ?? "multirow"),
     RETENTION_DAYS: parsePositiveInteger(env["RETENTION_DAYS"] ?? "30", "RETENTION_DAYS", 3650),
     RETENTION_INTERVAL_SECONDS: parsePositiveInteger(
       env["RETENTION_INTERVAL_SECONDS"] ?? "60",
