@@ -32,6 +32,9 @@ async function main(): Promise<void> {
   const logsRepository = createLogRepository(pool, config.INGEST_STRATEGY);
   const logsService = createLogIngestionService(logsRepository, {
     cursorSecret: config.CURSOR_SECRET,
+    ingestionBatchMaxLogs: config.INGEST_BATCH_MAX_LOGS,
+    ingestionBatchWaitMs: config.INGEST_BATCH_WAIT_MS,
+    ingestionBatchConcurrency: config.INGEST_BATCH_CONCURRENCY,
   });
   const retentionRepository = createRetentionRepository(pool);
   const retentionService = createRetentionService(retentionRepository, {
@@ -65,6 +68,7 @@ async function main(): Promise<void> {
     try {
       retentionWorker.stop();
       await app.close();
+      await logsService.flush();
       await pool.end();
       app.log.info("Server closed successfully.");
       process.exit(0);

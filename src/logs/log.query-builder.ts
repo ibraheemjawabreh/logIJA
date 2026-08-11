@@ -39,6 +39,7 @@ export function escapeLikeLiteral(value: string): string {
 function buildWhere(
   query: ValidatedLogQuery | ValidatedAggregateQuery,
   includeCursor: boolean,
+  timestampColumn = "timestamp",
 ): WhereBuildResult {
   const clauses: string[] = [];
   const values: unknown[] = [];
@@ -50,10 +51,10 @@ function buildWhere(
     clauses.push(`level = ${nextParam(values, query.level)}`);
   }
   if (query.since !== undefined) {
-    clauses.push(`timestamp >= ${nextParam(values, query.since)}::timestamptz`);
+    clauses.push(`${timestampColumn} >= ${nextParam(values, query.since)}::timestamptz`);
   }
   if (query.until !== undefined) {
-    clauses.push(`timestamp < ${nextParam(values, query.until)}::timestamptz`);
+    clauses.push(`${timestampColumn} < ${nextParam(values, query.until)}::timestamptz`);
   }
   for (const attribute of query.attributes) {
     const keyParam = nextParam(values, attribute.key);
@@ -103,19 +104,23 @@ export function buildListLogsQuery(query: ValidatedLogQuery): BuiltQuery {
 }
 
 export function buildAggregateLogsQuery(query: ValidatedAggregateQuery): BuiltQuery {
-  const where = buildWhere(query, false);
   const interval = BUCKET_INTERVALS[query.bucket];
-  const bucketExpression = `date_bin('${interval}'::interval, timestamp, '1970-01-01 00:00:00+00'::timestamptz)`;
   const groupExpression =
     query.groupBy === undefined ? "NULL::text" : GROUP_EXPRESSIONS[query.groupBy];
+  const useMinuteAggregates = query.attributes.length === 0 && query.q === undefined;
+  const timestampColumn = useMinuteAggregates ? "minute" : "timestamp";
+  const where = buildWhere(query, false, timestampColumn);
+  const bucketExpression = `date_bin('${interval}'::interval, ${timestampColumn}, '1970-01-01 00:00:00+00'::timestamptz)`;
+  const source = useMinuteAggregates ? "log_minute_aggregates" : "logs";
+  const countExpression = useMinuteAggregates ? "SUM(count)::text" : "COUNT(*)::text";
 
   return {
     text: `
       SELECT
         ${bucketExpression} AS start,
         ${groupExpression} AS "group",
-        COUNT(*)::text AS count
-      FROM logs
+        ${countExpression} AS count
+      FROM ${source}
       ${whereSql(where.clauses)}
       GROUP BY start, "group"
       ORDER BY start ASC, "group" ASC NULLS FIRST

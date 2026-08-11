@@ -1,5 +1,6 @@
 import { validateLogEntry } from "./log.validation.js";
 import { encodeCursor } from "./log.cursor.js";
+import { createIngestionBatcher } from "./log.ingestion-batcher.js";
 import type {
   AggregateResponse,
   IngestionResult,
@@ -15,11 +16,15 @@ export interface LogIngestionService {
   ingestLogs: (rawLogs: readonly unknown[]) => Promise<IngestionResult>;
   queryLogs: (query: ValidatedLogQuery) => Promise<LogListResponse>;
   aggregateLogs: (query: ValidatedAggregateQuery) => Promise<AggregateResponse>;
+  flush: () => Promise<void>;
 }
 
 export interface LogIngestionServiceOptions {
   now?: () => Date;
   cursorSecret: string;
+  ingestionBatchMaxLogs?: number;
+  ingestionBatchWaitMs?: number;
+  ingestionBatchConcurrency?: number;
 }
 
 export function createLogIngestionService(
@@ -27,6 +32,11 @@ export function createLogIngestionService(
   options: LogIngestionServiceOptions,
 ): LogIngestionService {
   const now = options.now ?? (() => new Date());
+  const ingestionBatcher = createIngestionBatcher(repository, {
+    maxLogsPerBatch: options.ingestionBatchMaxLogs ?? 1_000,
+    maxWaitMs: options.ingestionBatchWaitMs ?? 75,
+    concurrency: options.ingestionBatchConcurrency ?? 2,
+  });
 
   return {
     async ingestLogs(rawLogs: readonly unknown[]): Promise<IngestionResult> {
@@ -44,7 +54,7 @@ export function createLogIngestionService(
       });
 
       if (acceptedLogs.length > 0) {
-        await repository.insertLogs(acceptedLogs);
+        await ingestionBatcher.insertLogs(acceptedLogs);
       }
 
       return {
@@ -71,5 +81,7 @@ export function createLogIngestionService(
       const buckets = await repository.aggregateLogs(query);
       return { buckets: [...buckets] };
     },
+
+    flush: () => ingestionBatcher.flush(),
   };
 }

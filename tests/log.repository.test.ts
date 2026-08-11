@@ -24,7 +24,8 @@ const logs: ValidatedLog[] = [
 
 function poolWithQuery(): { pool: Pool; query: ReturnType<typeof vi.fn> } {
   const query = vi.fn().mockResolvedValue({ rows: [] });
-  return { pool: { query } as unknown as Pool, query };
+  const client = { query, release: vi.fn() };
+  return { pool: { connect: vi.fn().mockResolvedValue(client) } as unknown as Pool, query };
 }
 
 describe("log repository insertion strategies", () => {
@@ -33,8 +34,9 @@ describe("log repository insertion strategies", () => {
 
     await createLogRepository(pool, "multirow").insertLogs(logs);
 
-    expect(query).toHaveBeenCalledTimes(1);
-    const [text, values] = query.mock.calls[0] as [string, unknown[]];
+    const [text, values] = query.mock.calls.find(
+      ([queryText]) => typeof queryText === "string" && queryText.includes("INSERT INTO logs"),
+    ) as [string, unknown[]];
     expect(text).toContain(
       "INSERT INTO logs (timestamp, level, service, message, attributes, attributes_search) VALUES",
     );
@@ -62,8 +64,9 @@ describe("log repository insertion strategies", () => {
 
     await createLogRepository(pool, "unnest").insertLogs(logs);
 
-    expect(query).toHaveBeenCalledTimes(1);
-    const [text, values] = query.mock.calls[0] as [string, unknown[]];
+    const [text, values] = query.mock.calls.find(
+      ([queryText]) => typeof queryText === "string" && queryText.includes("INSERT INTO logs"),
+    ) as [string, unknown[]];
     expect(text).toContain("FROM unnest(");
     expect(text).toContain("$1::timestamptz[]");
     expect(text).toContain("$5::jsonb[]");

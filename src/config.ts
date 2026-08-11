@@ -25,6 +25,9 @@ export interface Config {
   CURSOR_SECRET: string;
   DB_POOL_MAX: number;
   INGEST_STRATEGY: IngestStrategy;
+  INGEST_BATCH_MAX_LOGS: number;
+  INGEST_BATCH_WAIT_MS: number;
+  INGEST_BATCH_CONCURRENCY: number;
   RETENTION_DAYS: number;
   RETENTION_INTERVAL_SECONDS: number;
   RETENTION_BATCH_SIZE: number;
@@ -112,6 +115,21 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     CURSOR_SECRET: parseCursorSecret(env["CURSOR_SECRET"] ?? "logija-local-cursor-secret"),
     DB_POOL_MAX: parsePositiveInteger(env["DB_POOL_MAX"] ?? "10", "DB_POOL_MAX", 100),
     INGEST_STRATEGY: parseIngestStrategy(env["INGEST_STRATEGY"] ?? "multirow"),
+    INGEST_BATCH_MAX_LOGS: parsePositiveInteger(
+      env["INGEST_BATCH_MAX_LOGS"] ?? "1000",
+      "INGEST_BATCH_MAX_LOGS",
+      5_000,
+    ),
+    INGEST_BATCH_WAIT_MS: parsePositiveInteger(
+      env["INGEST_BATCH_WAIT_MS"] ?? "75",
+      "INGEST_BATCH_WAIT_MS",
+      1_000,
+    ),
+    INGEST_BATCH_CONCURRENCY: parsePositiveInteger(
+      env["INGEST_BATCH_CONCURRENCY"] ?? "2",
+      "INGEST_BATCH_CONCURRENCY",
+      10,
+    ),
     RETENTION_DAYS: parsePositiveInteger(env["RETENTION_DAYS"] ?? "30", "RETENTION_DAYS", 3650),
     RETENTION_INTERVAL_SECONDS: parsePositiveInteger(
       env["RETENTION_INTERVAL_SECONDS"] ?? "60",

@@ -12,6 +12,9 @@ describe("loadConfig — defaults", () => {
     expect(cfg.CURSOR_SECRET).toBe("logija-local-cursor-secret");
     expect(cfg.DB_POOL_MAX).toBe(10);
     expect(cfg.INGEST_STRATEGY).toBe("multirow");
+    expect(cfg.INGEST_BATCH_MAX_LOGS).toBe(1000);
+    expect(cfg.INGEST_BATCH_WAIT_MS).toBe(75);
+    expect(cfg.INGEST_BATCH_CONCURRENCY).toBe(2);
     expect(cfg.RETENTION_DAYS).toBe(30);
     expect(cfg.RETENTION_INTERVAL_SECONDS).toBe(60);
     expect(cfg.RETENTION_BATCH_SIZE).toBe(10000);
@@ -107,6 +110,9 @@ describe("loadConfig - retention and pool settings", () => {
   it("accepts valid custom numeric settings", () => {
     const cfg = loadConfig({
       DB_POOL_MAX: "6",
+      INGEST_BATCH_MAX_LOGS: "500",
+      INGEST_BATCH_WAIT_MS: "20",
+      INGEST_BATCH_CONCURRENCY: "3",
       RETENTION_DAYS: "14",
       RETENTION_INTERVAL_SECONDS: "30",
       RETENTION_BATCH_SIZE: "500",
@@ -114,6 +120,9 @@ describe("loadConfig - retention and pool settings", () => {
     });
 
     expect(cfg.DB_POOL_MAX).toBe(6);
+    expect(cfg.INGEST_BATCH_MAX_LOGS).toBe(500);
+    expect(cfg.INGEST_BATCH_WAIT_MS).toBe(20);
+    expect(cfg.INGEST_BATCH_CONCURRENCY).toBe(3);
     expect(cfg.RETENTION_DAYS).toBe(14);
     expect(cfg.RETENTION_INTERVAL_SECONDS).toBe(30);
     expect(cfg.RETENTION_BATCH_SIZE).toBe(500);
@@ -122,6 +131,9 @@ describe("loadConfig - retention and pool settings", () => {
 
   it.each([
     ["DB_POOL_MAX", "0"],
+    ["INGEST_BATCH_MAX_LOGS", "0"],
+    ["INGEST_BATCH_WAIT_MS", "0"],
+    ["INGEST_BATCH_CONCURRENCY", "0"],
     ["RETENTION_DAYS", "0"],
     ["RETENTION_INTERVAL_SECONDS", "0"],
     ["RETENTION_BATCH_SIZE", "0"],

@@ -34,10 +34,13 @@ services:
       HOST: "0.0.0.0"
       PORT: "8080"
       LOG_LEVEL: info
-      DATABASE_URL: postgresql://logija:logija@postgres:5432/logija
+      DATABASE_URL: ${DATABASE_URL:-postgresql://logija:logija@postgres:5432/logija}
       CURSOR_SECRET: logija-local-cursor-secret
-      DB_POOL_MAX: ${DB_POOL_MAX:-4}
+      DB_POOL_MAX: ${DB_POOL_MAX:-6}
       INGEST_STRATEGY: ${INGEST_STRATEGY:-multirow}
+      INGEST_BATCH_MAX_LOGS: "1000"
+      INGEST_BATCH_WAIT_MS: "75"
+      INGEST_BATCH_CONCURRENCY: "2"
       RETENTION_DAYS: "30"
       RETENTION_INTERVAL_SECONDS: "60"
       RETENTION_BATCH_SIZE: "10000"

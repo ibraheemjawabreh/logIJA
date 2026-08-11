@@ -21,6 +21,7 @@
     "benchmark:ingest": "tsx scripts/benchmark-ingest.ts",
     "benchmark:filtered-query": "tsx scripts/benchmark-filtered-query.ts",
     "benchmark:mixed": "tsx scripts/benchmark-mixed.ts",
+    "benchmark:rate": "tsx scripts/benchmark-rate.ts",
     "benchmark:query": "tsx scripts/benchmark-query.ts",
     "seed:http": "tsx scripts/seed-http.ts",
     "load:ingest": "k6 run load-tests/ingestion.js",

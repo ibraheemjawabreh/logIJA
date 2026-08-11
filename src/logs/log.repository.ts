@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { IngestStrategy } from "../config.js";
 import { buildAggregateLogsQuery, buildListLogsQuery } from "./log.query-builder.js";
 import type {
@@ -33,6 +33,13 @@ interface InsertQuery {
   values: unknown[];
 }
 
+interface MinuteAggregate {
+  minute: string;
+  service: string;
+  level: LogLevel;
+  count: number;
+}
+
 const INSERT_COLUMNS = "(timestamp, level, service, message, attributes, attributes_search)";
 const UNNEST_INSERT_SQL = `
   INSERT INTO logs ${INSERT_COLUMNS}
@@ -45,6 +52,18 @@ const UNNEST_INSERT_SQL = `
     $5::jsonb[],
     $6::jsonb[]
   )
+`;
+const UPSERT_MINUTE_AGGREGATES_SQL = `
+  INSERT INTO log_minute_aggregates (minute, service, level, count)
+  SELECT *
+  FROM unnest(
+    $1::timestamptz[],
+    $2::text[],
+    $3::text[],
+    $4::bigint[]
+  )
+  ON CONFLICT (minute, service, level) DO UPDATE
+  SET count = log_minute_aggregates.count + EXCLUDED.count
 `;
 
 function stringifyAttributes(log: ValidatedLog): readonly [string, string] {
@@ -90,6 +109,44 @@ function buildUnnestInsert(logs: readonly ValidatedLog[]): InsertQuery {
   };
 }
 
+function buildMinuteAggregates(logs: readonly ValidatedLog[]): MinuteAggregate[] {
+  const grouped = new Map<string, MinuteAggregate>();
+
+  for (const log of logs) {
+    const minute = `${log.timestamp.slice(0, 16)}:00.000Z`;
+    const key = JSON.stringify([minute, log.service, log.level]);
+    const existing = grouped.get(key);
+    if (existing !== undefined) {
+      existing.count += 1;
+      continue;
+    }
+    grouped.set(key, { minute, service: log.service, level: log.level, count: 1 });
+  }
+
+  return [...grouped.values()];
+}
+
+async function persistLogs(
+  client: PoolClient,
+  insert: InsertQuery,
+  minuteAggregates: readonly MinuteAggregate[],
+): Promise<void> {
+  await client.query("BEGIN");
+  try {
+    await client.query(insert.text, insert.values);
+    await client.query(UPSERT_MINUTE_AGGREGATES_SQL, [
+      minuteAggregates.map((aggregate) => aggregate.minute),
+      minuteAggregates.map((aggregate) => aggregate.service),
+      minuteAggregates.map((aggregate) => aggregate.level),
+      minuteAggregates.map((aggregate) => aggregate.count),
+    ]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
 function isLogAttributeValue(value: unknown): value is LogAttributeValue {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
@@ -133,16 +190,13 @@ export function createLogRepository(
         return;
       }
 
-      if (ingestStrategy === "multirow") {
-        const query = buildMultirowInsert(logs);
-        await pool.query(query.text, query.values);
-        return;
-      }
-
-      if (ingestStrategy === "unnest") {
-        const query = buildUnnestInsert(logs);
-        await pool.query(query.text, query.values);
-        return;
+      const query =
+        ingestStrategy === "multirow" ? buildMultirowInsert(logs) : buildUnnestInsert(logs);
+      const client = await pool.connect();
+      try {
+        await persistLogs(client, query, buildMinuteAggregates(logs));
+      } finally {
+        client.release();
       }
     },
 
