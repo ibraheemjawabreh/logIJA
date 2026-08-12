@@ -23,7 +23,7 @@
  *   cursor streams, so different workers may read overlapping rows.
  */
 
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:8080";
+const BASE_URL = process.env.BASE_URL ?? "http://127.0.0.1:8080";
 const DURATION_SECONDS = parsePositiveInt(
   process.env.DURATION_SECONDS ?? "20",
   "DURATION_SECONDS"
@@ -32,10 +32,10 @@ const CONCURRENCY = parsePositiveInt(
   process.env.CONCURRENCY ?? "1",
   "CONCURRENCY"
 );
-const LIMIT = parsePositiveInt(process.env.LIMIT ?? "1000", "LIMIT");
+const LIMIT = parsePositiveInt(process.env.LIMIT ?? "100", "LIMIT");
 const FILTER_QUERY = process.env.FILTER_QUERY ?? "";
 const REQUEST_TIMEOUT_MS = parsePositiveInt(
-  process.env.REQUEST_TIMEOUT_MS ?? "30000",
+  process.env.REQUEST_TIMEOUT_MS ?? "120000",
   "REQUEST_TIMEOUT_MS"
 );
 
