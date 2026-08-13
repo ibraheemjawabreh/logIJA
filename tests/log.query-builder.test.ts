@@ -34,9 +34,9 @@ describe("log query builder", () => {
       limit: 100,
     });
 
-    expect(query.text).toContain("ORDER BY timestamp DESC, id DESC");
+    expect(query.text).toContain("ORDER BY logs.timestamp DESC, logs.id DESC");
     expect(query.text).not.toContain("OFFSET");
-    expect(query.text).toContain("id <");
+    expect(query.text).toContain("(logs.timestamp, logs.id) <");
   });
 
   it("maps aggregate bucket and group enums to static SQL", () => {

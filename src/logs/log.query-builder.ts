@@ -70,7 +70,7 @@ function buildWhere(
     const timestampParam = nextParam(values, query.cursor.timestamp);
     const idParam = nextParam(values, query.cursor.id);
     clauses.push(
-      `(timestamp < ${timestampParam}::timestamptz OR (timestamp = ${timestampParam}::timestamptz AND id < ${idParam}::bigint))`,
+      `(logs.timestamp, logs.id) < (${timestampParam}::timestamptz, ${idParam}::bigint)`,
     );
   }
 
@@ -96,7 +96,7 @@ export function buildListLogsQuery(query: ValidatedLogQuery): BuiltQuery {
         COALESCE(attributes, '{}'::jsonb) AS attributes
       FROM logs
       ${whereSql(where.clauses)}
-      ORDER BY timestamp DESC, id DESC
+      ORDER BY logs.timestamp DESC, logs.id DESC
       LIMIT ${limitParam}
     `,
     values: where.values,
