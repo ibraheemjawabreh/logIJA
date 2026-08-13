@@ -50,8 +50,8 @@ describe("log query builder", () => {
 
     expect(query.text).toContain("'5 minutes'::interval");
     expect(query.text).toContain('level AS "group"');
-    expect(query.text).toContain("FROM log_minute_aggregates");
-    expect(query.text).toContain("SUM(count)::text AS count");
+    expect(query.text).toContain("FROM logs");
+    expect(query.text).toContain("COUNT(*)::text AS count");
     expect(query.values).toEqual(["2026-07-20T14:00:00.000Z", "2026-07-20T15:00:00.000Z"]);
   });
 

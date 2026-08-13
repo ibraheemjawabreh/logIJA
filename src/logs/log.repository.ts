@@ -108,45 +108,6 @@ function buildUnnestInsert(logs: readonly ValidatedLog[]): InsertQuery {
     values: [timestamps, levels, services, messages, attributes, attributesSearch],
   };
 }
-
-function buildMinuteAggregates(logs: readonly ValidatedLog[]): MinuteAggregate[] {
-  const grouped = new Map<string, MinuteAggregate>();
-
-  for (const log of logs) {
-    const minute = `${log.timestamp.slice(0, 16)}:00.000Z`;
-    const key = JSON.stringify([minute, log.service, log.level]);
-    const existing = grouped.get(key);
-    if (existing !== undefined) {
-      existing.count += 1;
-      continue;
-    }
-    grouped.set(key, { minute, service: log.service, level: log.level, count: 1 });
-  }
-
-  return [...grouped.values()];
-}
-
-async function persistLogs(
-  client: PoolClient,
-  insert: InsertQuery,
-  minuteAggregates: readonly MinuteAggregate[],
-): Promise<void> {
-  await client.query("BEGIN");
-  try {
-    await client.query(insert.text, insert.values);
-    await client.query(UPSERT_MINUTE_AGGREGATES_SQL, [
-      minuteAggregates.map((aggregate) => aggregate.minute),
-      minuteAggregates.map((aggregate) => aggregate.service),
-      minuteAggregates.map((aggregate) => aggregate.level),
-      minuteAggregates.map((aggregate) => aggregate.count),
-    ]);
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  }
-}
-
 function isLogAttributeValue(value: unknown): value is LogAttributeValue {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
@@ -194,7 +155,7 @@ export function createLogRepository(
         ingestStrategy === "multirow" ? buildMultirowInsert(logs) : buildUnnestInsert(logs);
       const client = await pool.connect();
       try {
-        await persistLogs(client, query, buildMinuteAggregates(logs));
+        await client.query(query.text, query.values);
       } finally {
         client.release();
       }

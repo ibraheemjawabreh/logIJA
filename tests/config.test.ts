@@ -13,8 +13,8 @@ describe("loadConfig — defaults", () => {
     expect(cfg.DB_POOL_MAX).toBe(10);
     expect(cfg.INGEST_STRATEGY).toBe("multirow");
     expect(cfg.INGEST_BATCH_MAX_LOGS).toBe(1000);
-    expect(cfg.INGEST_BATCH_WAIT_MS).toBe(75);
-    expect(cfg.INGEST_BATCH_CONCURRENCY).toBe(2);
+    expect(cfg.INGEST_BATCH_WAIT_MS).toBe(5);
+    expect(cfg.INGEST_BATCH_CONCURRENCY).toBe(4);
     expect(cfg.RETENTION_DAYS).toBe(30);
     expect(cfg.RETENTION_INTERVAL_SECONDS).toBe(60);
     expect(cfg.RETENTION_BATCH_SIZE).toBe(10000);

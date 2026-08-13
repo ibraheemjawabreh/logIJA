@@ -121,12 +121,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       5_000,
     ),
     INGEST_BATCH_WAIT_MS: parsePositiveInteger(
-      env["INGEST_BATCH_WAIT_MS"] ?? "75",
+      env["INGEST_BATCH_WAIT_MS"] ?? "5",
       "INGEST_BATCH_WAIT_MS",
       1_000,
     ),
     INGEST_BATCH_CONCURRENCY: parsePositiveInteger(
-      env["INGEST_BATCH_CONCURRENCY"] ?? "2",
+      env["INGEST_BATCH_CONCURRENCY"] ?? "4",
       "INGEST_BATCH_CONCURRENCY",
       10,
     ),

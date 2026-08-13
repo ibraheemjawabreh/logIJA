@@ -107,20 +107,16 @@ export function buildAggregateLogsQuery(query: ValidatedAggregateQuery): BuiltQu
   const interval = BUCKET_INTERVALS[query.bucket];
   const groupExpression =
     query.groupBy === undefined ? "NULL::text" : GROUP_EXPRESSIONS[query.groupBy];
-  const useMinuteAggregates = query.attributes.length === 0 && query.q === undefined;
-  const timestampColumn = useMinuteAggregates ? "minute" : "timestamp";
-  const where = buildWhere(query, false, timestampColumn);
-  const bucketExpression = `date_bin('${interval}'::interval, ${timestampColumn}, '1970-01-01 00:00:00+00'::timestamptz)`;
-  const source = useMinuteAggregates ? "log_minute_aggregates" : "logs";
-  const countExpression = useMinuteAggregates ? "SUM(count)::text" : "COUNT(*)::text";
+  const where = buildWhere(query, false, "logs.timestamp");
+  const bucketExpression = `date_bin('${interval}'::interval, logs.timestamp, '1970-01-01 00:00:00+00'::timestamptz)`;
 
   return {
     text: `
       SELECT
         ${bucketExpression} AS start,
         ${groupExpression} AS "group",
-        ${countExpression} AS count
-      FROM ${source}
+        COUNT(*)::text AS count
+      FROM logs
       ${whereSql(where.clauses)}
       GROUP BY start, "group"
       ORDER BY start ASC, "group" ASC NULLS FIRST
