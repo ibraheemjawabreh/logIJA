@@ -32,7 +32,7 @@ const CONCURRENCY = parsePositiveInt(
   process.env.CONCURRENCY ?? "1",
   "CONCURRENCY"
 );
-const LIMIT = parsePositiveInt(process.env.LIMIT ?? "100", "LIMIT");
+const LIMIT = parsePositiveInt(process.env.LIMIT ?? "1000", "LIMIT");
 const FILTER_QUERY = process.env.FILTER_QUERY ?? "";
 const REQUEST_TIMEOUT_MS = parsePositiveInt(
   process.env.REQUEST_TIMEOUT_MS ?? "120000",
