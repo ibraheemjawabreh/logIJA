@@ -5,7 +5,6 @@ import type { FastifyInstance } from "fastify";
  * pool directly. This makes the route testable via Fastify injection without
  * requiring a real database connection in unit tests.
  */
-// ibraheem is here too
 
 export interface HealthDeps {
   checkDb: () => Promise<boolean>;
