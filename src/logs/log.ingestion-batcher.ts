@@ -47,14 +47,19 @@ export function createIngestionBatcher(
     }
   }
 
+  // Maximum adaptive batch size when queue is under heavy load (up to 4000 logs)
+  const maxAdaptiveBatchSize = Math.max(options.maxLogsPerBatch, 4000);
+
   function takeBatch(): PendingBatch {
     const inserts: PendingInsert[] = [];
     const logs: ValidatedLog[] = [];
+    const targetBatchSize =
+      pendingLogCount > options.maxLogsPerBatch ? maxAdaptiveBatchSize : options.maxLogsPerBatch;
 
     while (pending.length > 0) {
       const next = pending[0];
       if (next === undefined) break;
-      if (inserts.length > 0 && logs.length + next.logs.length > options.maxLogsPerBatch) {
+      if (inserts.length > 0 && logs.length + next.logs.length > targetBatchSize) {
         break;
       }
 
@@ -93,6 +98,7 @@ export function createIngestionBatcher(
   function flushAvailableBatches(): void {
     while (activeBatches < options.concurrency && pending.length > 0) {
       const batch = takeBatch();
+      if (batch.logs.length === 0) break;
       activeBatches += 1;
 
       void repository
@@ -109,7 +115,11 @@ export function createIngestionBatcher(
         })
         .finally(() => {
           activeBatches -= 1;
-          scheduleFlush();
+          if (pending.length > 0) {
+            flushAvailableBatches();
+          } else {
+            resolveIdleWaiters();
+          }
         });
     }
   }

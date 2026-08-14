@@ -114,9 +114,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ),
     CURSOR_SECRET: parseCursorSecret(env["CURSOR_SECRET"] ?? "logija-local-cursor-secret"),
     DB_POOL_MAX: parsePositiveInteger(env["DB_POOL_MAX"] ?? "10", "DB_POOL_MAX", 100),
-    INGEST_STRATEGY: parseIngestStrategy(env["INGEST_STRATEGY"] ?? "multirow"),
+    INGEST_STRATEGY: parseIngestStrategy(env["INGEST_STRATEGY"] ?? "unnest"),
     INGEST_BATCH_MAX_LOGS: parsePositiveInteger(
-      env["INGEST_BATCH_MAX_LOGS"] ?? "1000",
+      env["INGEST_BATCH_MAX_LOGS"] ?? "2500",
       "INGEST_BATCH_MAX_LOGS",
       5_000,
     ),
@@ -126,7 +126,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       1_000,
     ),
     INGEST_BATCH_CONCURRENCY: parsePositiveInteger(
-      env["INGEST_BATCH_CONCURRENCY"] ?? "4",
+      env["INGEST_BATCH_CONCURRENCY"] ?? "3",
       "INGEST_BATCH_CONCURRENCY",
       10,
     ),

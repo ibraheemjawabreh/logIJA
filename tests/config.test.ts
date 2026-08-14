@@ -11,10 +11,10 @@ describe("loadConfig — defaults", () => {
     expect(cfg.DATABASE_URL).toBe("postgresql://logija:logija@localhost:5432/logija");
     expect(cfg.CURSOR_SECRET).toBe("logija-local-cursor-secret");
     expect(cfg.DB_POOL_MAX).toBe(10);
-    expect(cfg.INGEST_STRATEGY).toBe("multirow");
-    expect(cfg.INGEST_BATCH_MAX_LOGS).toBe(1000);
+    expect(cfg.INGEST_STRATEGY).toBe("unnest");
+    expect(cfg.INGEST_BATCH_MAX_LOGS).toBe(2500);
     expect(cfg.INGEST_BATCH_WAIT_MS).toBe(5);
-    expect(cfg.INGEST_BATCH_CONCURRENCY).toBe(4);
+    expect(cfg.INGEST_BATCH_CONCURRENCY).toBe(3);
     expect(cfg.RETENTION_DAYS).toBe(30);
     expect(cfg.RETENTION_INTERVAL_SECONDS).toBe(60);
     expect(cfg.RETENTION_BATCH_SIZE).toBe(10000);

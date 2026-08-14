@@ -24,19 +24,13 @@
  */
 
 const BASE_URL = process.env.BASE_URL ?? "http://127.0.0.1:8080";
-const DURATION_SECONDS = parsePositiveInt(
-  process.env.DURATION_SECONDS ?? "20",
-  "DURATION_SECONDS"
-);
-const CONCURRENCY = parsePositiveInt(
-  process.env.CONCURRENCY ?? "1",
-  "CONCURRENCY"
-);
+const DURATION_SECONDS = parsePositiveInt(process.env.DURATION_SECONDS ?? "20", "DURATION_SECONDS");
+const CONCURRENCY = parsePositiveInt(process.env.CONCURRENCY ?? "1", "CONCURRENCY");
 const LIMIT = parsePositiveInt(process.env.LIMIT ?? "1000", "LIMIT");
 const FILTER_QUERY = process.env.FILTER_QUERY ?? "";
 const REQUEST_TIMEOUT_MS = parsePositiveInt(
   process.env.REQUEST_TIMEOUT_MS ?? "120000",
-  "REQUEST_TIMEOUT_MS"
+  "REQUEST_TIMEOUT_MS",
 );
 
 if (LIMIT > 1000) {
@@ -58,10 +52,7 @@ function parsePositiveInt(value, name) {
 function percentile(sorted, p) {
   if (sorted.length === 0) return 0;
 
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)
-  );
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
 
   return sorted[index];
 }
@@ -171,8 +162,7 @@ async function worker(workerId) {
     } catch (error) {
       stats.failures += 1;
 
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
 
       if (stats.failures <= 5) {
         console.error(`[worker ${workerId}] request failed: ${message}`);
@@ -217,12 +207,8 @@ async function main() {
   console.log("");
 
   if (CONCURRENCY > 1) {
-    console.log(
-      "NOTE: Multiple workers use independent cursor streams. The result is"
-    );
-    console.log(
-      "      total API delivery throughput, not unique-row scan throughput."
-    );
+    console.log("NOTE: Multiple workers use independent cursor streams. The result is");
+    console.log("      total API delivery throughput, not unique-row scan throughput.");
     console.log("");
   }
 
@@ -232,9 +218,7 @@ async function main() {
     stopRequested = true;
   }, DURATION_SECONDS * 1000);
 
-  const workers = Array.from({ length: CONCURRENCY }, (_, index) =>
-    worker(index + 1)
-  );
+  const workers = Array.from({ length: CONCURRENCY }, (_, index) => worker(index + 1));
 
   await Promise.all(workers);
   clearTimeout(timer);
@@ -242,10 +226,8 @@ async function main() {
   const elapsedSeconds = (performance.now() - benchmarkStart) / 1000;
   const sortedLatencies = [...stats.latenciesMs].sort((a, b) => a - b);
 
-  const logsPerSecond =
-    elapsedSeconds > 0 ? stats.logsRead / elapsedSeconds : 0;
-  const requestsPerSecond =
-    elapsedSeconds > 0 ? stats.responses / elapsedSeconds : 0;
+  const logsPerSecond = elapsedSeconds > 0 ? stats.logsRead / elapsedSeconds : 0;
+  const requestsPerSecond = elapsedSeconds > 0 ? stats.responses / elapsedSeconds : 0;
 
   console.log("");
   console.log("============================================================");
@@ -274,10 +256,7 @@ process.on("SIGINT", () => {
 
 main().catch((error) => {
   console.error("");
-  console.error(
-    "Benchmark failed:",
-    error instanceof Error ? error.message : String(error)
-  );
+  console.error("Benchmark failed:", error instanceof Error ? error.message : String(error));
   console.error("");
   console.error("Make sure Docker is running and logIJA is available at:");
   console.error(`${BASE_URL}/health`);

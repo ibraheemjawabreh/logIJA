@@ -20,6 +20,10 @@ export function createRetentionRepository(pool: Pool): RetentionRepository {
         [cutoff, batchSize],
       );
 
+      await pool.query(`DELETE FROM log_minute_aggregates WHERE minute < $1::timestamptz`, [
+        cutoff,
+      ]);
+
       return result.rowCount ?? 0;
     },
   };

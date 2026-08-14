@@ -8,10 +8,16 @@ import { Pool } from "pg";
  * overhead and memory pressure. This can be tuned once benchmarked.
  */
 export function createPool(connectionString: string, max = 10): Pool {
-  return new Pool({
+  const pool = new Pool({
     connectionString,
     max,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
   });
+
+  pool.on("connect", (client) => {
+    void client.query("SET synchronous_commit = off").catch(() => {});
+  });
+
+  return pool;
 }

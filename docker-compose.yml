@@ -7,6 +7,29 @@ services:
       POSTGRES_USER: logija
       POSTGRES_PASSWORD: logija
 
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "max_wal_size=2GB"
+      - "-c"
+      - "min_wal_size=256MB"
+      - "-c"
+      - "synchronous_commit=off"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_cache_size=768MB"
+
     volumes:
       - postgres_data:/var/lib/postgresql
 
@@ -38,9 +61,9 @@ services:
       CURSOR_SECRET: logija-local-cursor-secret
       DB_POOL_MAX: ${DB_POOL_MAX:-10}
       INGEST_STRATEGY: ${INGEST_STRATEGY:-unnest}
-      INGEST_BATCH_MAX_LOGS: "1000"
-      INGEST_BATCH_WAIT_MS: "10"
-      INGEST_BATCH_CONCURRENCY: "4"
+      INGEST_BATCH_MAX_LOGS: "2500"
+      INGEST_BATCH_WAIT_MS: "5"
+      INGEST_BATCH_CONCURRENCY: "3"
       RETENTION_DAYS: "30"
       RETENTION_INTERVAL_SECONDS: "60"
       RETENTION_BATCH_SIZE: "10000"

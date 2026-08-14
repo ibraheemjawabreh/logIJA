@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import type { IngestStrategy } from "../config.js";
 import { buildAggregateLogsQuery, buildListLogsQuery } from "./log.query-builder.js";
 import type {
@@ -33,14 +33,9 @@ interface InsertQuery {
   values: unknown[];
 }
 
-interface MinuteAggregate {
-  minute: string;
-  service: string;
-  level: LogLevel;
-  count: number;
-}
-
 const INSERT_COLUMNS = "(timestamp, level, service, message, attributes, attributes_search)";
+const EMPTY_JSON = "{}";
+
 const UNNEST_INSERT_SQL = `
   INSERT INTO logs ${INSERT_COLUMNS}
   SELECT *
@@ -53,21 +48,13 @@ const UNNEST_INSERT_SQL = `
     $6::jsonb[]
   )
 `;
-const UPSERT_MINUTE_AGGREGATES_SQL = `
-  INSERT INTO log_minute_aggregates (minute, service, level, count)
-  SELECT *
-  FROM unnest(
-    $1::timestamptz[],
-    $2::text[],
-    $3::text[],
-    $4::bigint[]
-  )
-  ON CONFLICT (minute, service, level) DO UPDATE
-  SET count = log_minute_aggregates.count + EXCLUDED.count
-`;
 
 function stringifyAttributes(log: ValidatedLog): readonly [string, string] {
-  return [JSON.stringify(log.attributes), JSON.stringify(log.attributesSearch)];
+  const hasAttrs = Object.keys(log.attributes).length > 0;
+  return [
+    hasAttrs ? JSON.stringify(log.attributes) : EMPTY_JSON,
+    hasAttrs ? JSON.stringify(log.attributesSearch) : EMPTY_JSON,
+  ];
 }
 
 function buildMultirowInsert(logs: readonly ValidatedLog[]): InsertQuery {
