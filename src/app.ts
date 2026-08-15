@@ -4,7 +4,7 @@ import { logsRoute, type LogsRouteDeps } from "./routes/logs.route.js";
 import type { Config } from "./config.js";
 
 export type AppDeps = HealthDeps & Omit<LogsRouteDeps, "cursorSecret">;
-//ibraheem is here
+
 const BODY_LIMIT_BYTES = 10 * 1024 * 1024;
 
 export async function buildApp(config: Config, deps: AppDeps): Promise<FastifyInstance> {
