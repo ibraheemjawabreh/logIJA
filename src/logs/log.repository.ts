@@ -95,6 +95,49 @@ function buildUnnestInsert(logs: readonly ValidatedLog[]): InsertQuery {
     values: [timestamps, levels, services, messages, attributes, attributesSearch],
   };
 }
+const UPSERT_MINUTE_AGGREGATES_SQL = `
+  INSERT INTO log_minute_aggregates (minute, service, level, count)
+  SELECT *
+  FROM unnest(
+    $1::timestamptz[],
+    $2::text[],
+    $3::text[],
+    $4::bigint[]
+  )
+  ON CONFLICT (minute, service, level)
+  DO UPDATE SET count = log_minute_aggregates.count + EXCLUDED.count;
+`;
+
+function buildMinuteAggregates(logs: readonly ValidatedLog[]) {
+  const map = new Map<string, { minute: string; service: string; level: string; count: number }>();
+  for (let i = 0; i < logs.length; i++) {
+    const log = logs[i];
+    if (log === undefined) continue;
+    const minute = log.timestamp.slice(0, 16) + ":00.000Z";
+    const key = `${minute}|${log.service}|${log.level}`;
+    const existing = map.get(key);
+    if (existing !== undefined) {
+      existing.count += 1;
+    } else {
+      map.set(key, { minute, service: log.service, level: log.level, count: 1 });
+    }
+  }
+
+  const minutes: string[] = [];
+  const services: string[] = [];
+  const levels: string[] = [];
+  const counts: number[] = [];
+
+  for (const entry of map.values()) {
+    minutes.push(entry.minute);
+    services.push(entry.service);
+    levels.push(entry.level);
+    counts.push(entry.count);
+  }
+
+  return { minutes, services, levels, counts };
+}
+
 function isLogAttributeValue(value: unknown): value is LogAttributeValue {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
@@ -114,10 +157,14 @@ function toLogAttributes(value: unknown): LogAttributes {
 }
 
 function toIsoTimestamp(value: Date | string): string {
-  if (value instanceof Date) {
-    return value.toISOString();
+  if (typeof value === "string") {
+    if (value.endsWith("Z") && value.length === 24) {
+      return value;
+    }
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? value : d.toISOString();
   }
-  return new Date(value).toISOString();
+  return value.toISOString();
 }
 
 function toSafeCount(value: string): number {
@@ -140,9 +187,19 @@ export function createLogRepository(
 
       const query =
         ingestStrategy === "multirow" ? buildMultirowInsert(logs) : buildUnnestInsert(logs);
+      const minuteAggs = buildMinuteAggregates(logs);
+
       const client = await pool.connect();
       try {
         await client.query(query.text, query.values);
+        if (minuteAggs.minutes.length > 0) {
+          await client.query(UPSERT_MINUTE_AGGREGATES_SQL, [
+            minuteAggs.minutes,
+            minuteAggs.services,
+            minuteAggs.levels,
+            minuteAggs.counts,
+          ]);
+        }
       } finally {
         client.release();
       }

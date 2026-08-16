@@ -56,10 +56,14 @@ function buildWhere(
   if (query.until !== undefined) {
     clauses.push(`${timestampColumn} < ${nextParam(values, query.until)}::timestamptz`);
   }
-  for (const attribute of query.attributes) {
-    const keyParam = nextParam(values, attribute.key);
-    const valueParam = nextParam(values, attribute.value);
-    clauses.push(`(attributes_search ->> ${keyParam}) = ${valueParam}`);
+  if (query.attributes.length > 0) {
+    const jsonbArgs: string[] = [];
+    for (const attribute of query.attributes) {
+      const k = nextParam(values, attribute.key);
+      const v = nextParam(values, attribute.value);
+      jsonbArgs.push(`${k}::text`, `${v}::text`);
+    }
+    clauses.push(`attributes_search @> jsonb_build_object(${jsonbArgs.join(", ")})`);
   }
   if (query.q !== undefined) {
     clauses.push(

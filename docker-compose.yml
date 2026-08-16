@@ -20,6 +20,8 @@ services:
       - "-c"
       - "checkpoint_completion_target=0.9"
       - "-c"
+      - "checkpoint_timeout=15min"
+      - "-c"
       - "max_wal_size=2GB"
       - "-c"
       - "min_wal_size=256MB"
@@ -29,6 +31,10 @@ services:
       - "random_page_cost=1.1"
       - "-c"
       - "effective_cache_size=768MB"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "gin_pending_list_limit=4MB"
 
     volumes:
       - postgres_data:/var/lib/postgresql
@@ -59,11 +65,11 @@ services:
       LOG_LEVEL: info
       DATABASE_URL: ${DATABASE_URL:-postgresql://logija:logija@postgres:5432/logija}
       CURSOR_SECRET: logija-local-cursor-secret
-      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      DB_POOL_MAX: ${DB_POOL_MAX:-25}
       INGEST_STRATEGY: ${INGEST_STRATEGY:-unnest}
       INGEST_BATCH_MAX_LOGS: "2500"
-      INGEST_BATCH_WAIT_MS: "5"
-      INGEST_BATCH_CONCURRENCY: "3"
+      INGEST_BATCH_WAIT_MS: "3"
+      INGEST_BATCH_CONCURRENCY: "4"
       RETENTION_DAYS: "30"
       RETENTION_INTERVAL_SECONDS: "60"
       RETENTION_BATCH_SIZE: "10000"

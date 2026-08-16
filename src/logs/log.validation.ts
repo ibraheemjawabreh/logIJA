@@ -61,7 +61,8 @@ export function parseStrictTimestamp(value: unknown): TimestampValidationResult 
   const hour = Number(hourRaw);
   const minute = Number(minuteRaw);
   const second = Number(secondRaw);
-  const millisecond = Number((fractionRaw ?? "").padEnd(3, "0") || "0");
+  const fraction = fractionRaw ?? "";
+  const millisecond = Number(fraction.padEnd(3, "0").slice(0, 3) || "0");
 
   if (
     month < 1 ||
@@ -75,16 +76,21 @@ export function parseStrictTimestamp(value: unknown): TimestampValidationResult 
     return { ok: false, reason: "invalid timestamp" };
   }
 
-  let offsetMinutes = 0;
-  if (offsetRaw !== "Z") {
-    const sign = offsetRaw[0] === "-" ? -1 : 1;
-    const offsetHour = Number(offsetRaw.slice(1, 3));
-    const offsetMinute = Number(offsetRaw.slice(4, 6));
-    if (offsetHour > 23 || offsetMinute > 59) {
-      return { ok: false, reason: "invalid timestamp" };
-    }
-    offsetMinutes = sign * (offsetHour * 60 + offsetMinute);
+  if (offsetRaw === "Z") {
+    const msStr = String(millisecond).padStart(3, "0");
+    return {
+      ok: true,
+      timestamp: `${yearRaw}-${monthRaw}-${dayRaw}T${hourRaw}:${minuteRaw}:${secondRaw}.${msStr}Z`,
+    };
   }
+
+  const sign = offsetRaw[0] === "-" ? -1 : 1;
+  const offsetHour = Number(offsetRaw.slice(1, 3));
+  const offsetMinute = Number(offsetRaw.slice(4, 6));
+  if (offsetHour > 23 || offsetMinute > 59) {
+    return { ok: false, reason: "invalid timestamp" };
+  }
+  const offsetMinutes = sign * (offsetHour * 60 + offsetMinute);
 
   const utcMillis =
     Date.UTC(year, month - 1, day, hour, minute, second, millisecond) - offsetMinutes * 60_000;
@@ -100,7 +106,7 @@ function parseIngestionTimestamp(value: unknown, now: Date): TimestampValidation
   const parsed = parseStrictTimestamp(value);
   if (!parsed.ok) return parsed;
 
-  if (new Date(parsed.timestamp).getTime() - now.getTime() > MAX_FUTURE_MS) {
+  if (Date.parse(parsed.timestamp) - now.getTime() > MAX_FUTURE_MS) {
     return { ok: false, reason: "timestamp is more than 5 minutes in the future" };
   }
 
