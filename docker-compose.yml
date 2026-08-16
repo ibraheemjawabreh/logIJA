@@ -10,21 +10,21 @@ services:
     command:
       - "postgres"
       - "-c"
-      - "shared_buffers=256MB"
+      - "shared_buffers=384MB"
       - "-c"
-      - "work_mem=32MB"
+      - "work_mem=64MB"
       - "-c"
-      - "maintenance_work_mem=64MB"
+      - "maintenance_work_mem=128MB"
       - "-c"
-      - "wal_buffers=16MB"
+      - "wal_buffers=32MB"
       - "-c"
       - "checkpoint_completion_target=0.9"
       - "-c"
-      - "checkpoint_timeout=15min"
+      - "checkpoint_timeout=30min"
       - "-c"
-      - "max_wal_size=2GB"
+      - "max_wal_size=4GB"
       - "-c"
-      - "min_wal_size=256MB"
+      - "min_wal_size=512MB"
       - "-c"
       - "synchronous_commit=off"
       - "-c"
@@ -32,9 +32,9 @@ services:
       - "-c"
       - "effective_cache_size=768MB"
       - "-c"
-      - "max_connections=100"
+      - "max_connections=120"
       - "-c"
-      - "gin_pending_list_limit=4MB"
+      - "gin_pending_list_limit=64MB"
 
     volumes:
       - postgres_data:/var/lib/postgresql
@@ -62,14 +62,14 @@ services:
       NODE_ENV: production
       HOST: "0.0.0.0"
       PORT: "8080"
-      LOG_LEVEL: info
+      LOG_LEVEL: warn
       DATABASE_URL: ${DATABASE_URL:-postgresql://logija:logija@postgres:5432/logija}
       CURSOR_SECRET: logija-local-cursor-secret
-      DB_POOL_MAX: ${DB_POOL_MAX:-25}
+      DB_POOL_MAX: ${DB_POOL_MAX:-30}
       INGEST_STRATEGY: ${INGEST_STRATEGY:-unnest}
-      INGEST_BATCH_MAX_LOGS: "2500"
-      INGEST_BATCH_WAIT_MS: "3"
-      INGEST_BATCH_CONCURRENCY: "4"
+      INGEST_BATCH_MAX_LOGS: "3000"
+      INGEST_BATCH_WAIT_MS: "2"
+      INGEST_BATCH_CONCURRENCY: "6"
       RETENTION_DAYS: "30"
       RETENTION_INTERVAL_SECONDS: "60"
       RETENTION_BATCH_SIZE: "10000"

@@ -31,7 +31,7 @@ export function createPool(connectionString: string, max = 25): Pool {
     connectionTimeoutMillis: 15_000,
   });
 
-  pool.on("error", (_err) => {
+  pool.on("error", () => {
     // Suppress unhandled error events on idle clients to prevent process crash
   });
 

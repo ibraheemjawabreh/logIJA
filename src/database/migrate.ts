@@ -14,10 +14,6 @@ import type { Pool, PoolClient } from "pg";
  */
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../migrations", import.meta.url));
 
-interface MigrationRow {
-  filename: string;
-}
-
 /**
  * Run any pending SQL migrations in filename order.
  *
@@ -33,11 +29,6 @@ export async function runMigrations(pool: Pool): Promise<void> {
       applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-
-  // Collect already-applied filenames
-  const applied = await pool
-    .query<MigrationRow>("SELECT filename FROM schema_migrations ORDER BY filename")
-    .then((r) => new Set(r.rows.map((row) => row.filename)));
 
   // Read and sort migration files
   const files = (await fs.readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();

@@ -111,6 +111,27 @@ export function buildAggregateLogsQuery(query: ValidatedAggregateQuery): BuiltQu
   const interval = BUCKET_INTERVALS[query.bucket];
   const groupExpression =
     query.groupBy === undefined ? "NULL::text" : GROUP_EXPRESSIONS[query.groupBy];
+
+  // If no attributes or free-text query are present, serve from the pre-aggregated minute table
+  if (query.attributes.length === 0 && query.q === undefined) {
+    const where = buildWhere(query, false, "minute");
+    const bucketExpression = `date_bin('${interval}'::interval, minute, '1970-01-01 00:00:00+00'::timestamptz)`;
+
+    return {
+      text: `
+        SELECT
+          ${bucketExpression} AS start,
+          ${groupExpression} AS "group",
+          SUM(count)::text AS count
+        FROM log_minute_aggregates
+        ${whereSql(where.clauses)}
+        GROUP BY start, "group"
+        ORDER BY start ASC, "group" ASC NULLS FIRST
+      `,
+      values: where.values,
+    };
+  }
+
   const where = buildWhere(query, false, "logs.timestamp");
   const bucketExpression = `date_bin('${interval}'::interval, logs.timestamp, '1970-01-01 00:00:00+00'::timestamptz)`;
 
@@ -128,3 +149,4 @@ export function buildAggregateLogsQuery(query: ValidatedAggregateQuery): BuiltQu
     values: where.values,
   };
 }
+

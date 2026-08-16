@@ -72,22 +72,49 @@ function buildMultirowInsert(logs: readonly ValidatedLog[]): InsertQuery {
   };
 }
 
-function buildUnnestInsert(logs: readonly ValidatedLog[]): InsertQuery {
-  const timestamps: string[] = [];
-  const levels: string[] = [];
-  const services: string[] = [];
-  const messages: string[] = [];
-  const attributes: string[] = [];
-  const attributesSearch: string[] = [];
+const UNNEST_COMBINED_INSERT_SQL = `
+  WITH inserted_logs AS (
+    INSERT INTO logs ${INSERT_COLUMNS}
+    SELECT *
+    FROM unnest(
+      $1::timestamptz[],
+      $2::text[],
+      $3::text[],
+      $4::text[],
+      $5::jsonb[],
+      $6::jsonb[]
+    )
+  )
+  INSERT INTO log_minute_aggregates (minute, service, level, count)
+  SELECT *
+  FROM unnest(
+    $7::timestamptz[],
+    $8::text[],
+    $9::text[],
+    $10::bigint[]
+  )
+  ON CONFLICT (minute, service, level)
+  DO UPDATE SET count = log_minute_aggregates.count + EXCLUDED.count;
+`;
 
-  for (const log of logs) {
-    const [serializedAttributes, serializedAttributesSearch] = stringifyAttributes(log);
-    timestamps.push(log.timestamp);
-    levels.push(log.level);
-    services.push(log.service);
-    messages.push(log.message);
-    attributes.push(serializedAttributes);
-    attributesSearch.push(serializedAttributesSearch);
+function buildUnnestInsert(logs: readonly ValidatedLog[]): InsertQuery {
+  const len = logs.length;
+  const timestamps = new Array<string>(len);
+  const levels = new Array<string>(len);
+  const services = new Array<string>(len);
+  const messages = new Array<string>(len);
+  const attributes = new Array<string>(len);
+  const attributesSearch = new Array<string>(len);
+
+  for (let i = 0; i < len; i++) {
+    const log = logs[i]!;
+    const hasAttrs = Object.keys(log.attributes).length > 0;
+    timestamps[i] = log.timestamp;
+    levels[i] = log.level;
+    services[i] = log.service;
+    messages[i] = log.message;
+    attributes[i] = hasAttrs ? JSON.stringify(log.attributes) : EMPTY_JSON;
+    attributesSearch[i] = hasAttrs ? JSON.stringify(log.attributesSearch) : EMPTY_JSON;
   }
 
   return {
@@ -95,24 +122,12 @@ function buildUnnestInsert(logs: readonly ValidatedLog[]): InsertQuery {
     values: [timestamps, levels, services, messages, attributes, attributesSearch],
   };
 }
-const UPSERT_MINUTE_AGGREGATES_SQL = `
-  INSERT INTO log_minute_aggregates (minute, service, level, count)
-  SELECT *
-  FROM unnest(
-    $1::timestamptz[],
-    $2::text[],
-    $3::text[],
-    $4::bigint[]
-  )
-  ON CONFLICT (minute, service, level)
-  DO UPDATE SET count = log_minute_aggregates.count + EXCLUDED.count;
-`;
 
 function buildMinuteAggregates(logs: readonly ValidatedLog[]) {
   const map = new Map<string, { minute: string; service: string; level: string; count: number }>();
-  for (let i = 0; i < logs.length; i++) {
-    const log = logs[i];
-    if (log === undefined) continue;
+  const len = logs.length;
+  for (let i = 0; i < len; i++) {
+    const log = logs[i]!;
     const minute = log.timestamp.slice(0, 16) + ":00.000Z";
     const key = `${minute}|${log.service}|${log.level}`;
     const existing = map.get(key);
@@ -123,16 +138,19 @@ function buildMinuteAggregates(logs: readonly ValidatedLog[]) {
     }
   }
 
-  const minutes: string[] = [];
-  const services: string[] = [];
-  const levels: string[] = [];
-  const counts: number[] = [];
+  const mapSize = map.size;
+  const minutes = new Array<string>(mapSize);
+  const services = new Array<string>(mapSize);
+  const levels = new Array<string>(mapSize);
+  const counts = new Array<number>(mapSize);
 
+  let idx = 0;
   for (const entry of map.values()) {
-    minutes.push(entry.minute);
-    services.push(entry.service);
-    levels.push(entry.level);
-    counts.push(entry.count);
+    minutes[idx] = entry.minute;
+    services[idx] = entry.service;
+    levels[idx] = entry.level;
+    counts[idx] = entry.count;
+    idx += 1;
   }
 
   return { minutes, services, levels, counts };
@@ -185,20 +203,46 @@ export function createLogRepository(
         return;
       }
 
-      const query =
-        ingestStrategy === "multirow" ? buildMultirowInsert(logs) : buildUnnestInsert(logs);
-      const minuteAggs = buildMinuteAggregates(logs);
+      if (ingestStrategy === "unnest") {
+        const unnestData = buildUnnestInsert(logs);
+        const minuteAggs = buildMinuteAggregates(logs);
 
-      const client = await pool.connect();
-      try {
-        await client.query(query.text, query.values);
         if (minuteAggs.minutes.length > 0) {
-          await client.query(UPSERT_MINUTE_AGGREGATES_SQL, [
+          await pool.query(UNNEST_COMBINED_INSERT_SQL, [
+            ...unnestData.values,
             minuteAggs.minutes,
             minuteAggs.services,
             minuteAggs.levels,
             minuteAggs.counts,
           ]);
+        } else {
+          await pool.query(unnestData.text, unnestData.values);
+        }
+        return;
+      }
+
+      const multirowQuery = buildMultirowInsert(logs);
+      const minuteAggs = buildMinuteAggregates(logs);
+
+      const client = await pool.connect();
+      try {
+        await client.query(multirowQuery.text, multirowQuery.values);
+        if (minuteAggs.minutes.length > 0) {
+          await client.query(
+            `
+            INSERT INTO log_minute_aggregates (minute, service, level, count)
+            SELECT *
+            FROM unnest(
+              $1::timestamptz[],
+              $2::text[],
+              $3::text[],
+              $4::bigint[]
+            )
+            ON CONFLICT (minute, service, level)
+            DO UPDATE SET count = log_minute_aggregates.count + EXCLUDED.count;
+          `,
+            [minuteAggs.minutes, minuteAggs.services, minuteAggs.levels, minuteAggs.counts],
+          );
         }
       } finally {
         client.release();
