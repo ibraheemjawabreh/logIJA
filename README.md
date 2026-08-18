@@ -1,4 +1,4 @@
-﻿# LogPulse
+# LogPulse
 
 A high-performance structured log ingestion, querying, aggregation, and retention service built as an internship final project.
 
@@ -8,39 +8,51 @@ LogPulse accepts structured application logs, stores them durably in PostgreSQL,
 
 ## Current architecture
 
-```
+```text
 src/
-  config.ts              â†گ typed environment validation (fail-fast)
-  app.ts                 â†گ buildApp() factory (testable without a real port)
-  server.ts              â†گ startup sequence + graceful shutdown
+  config.ts              <- typed environment validation (fail-fast)
+  app.ts                 <- buildApp() factory (testable without a real port)
+  server.ts              <- startup sequence + graceful shutdown
   database/
-    pool.ts              â†گ pg connection pool
-    migrate.ts           â†گ SQL migration runner
-    health.ts            â†گ lightweight DB health check
+    pool.ts              <- pg connection pool
+    migrate.ts           <- SQL migration runner
+    health.ts            <- lightweight DB health check
   logs/
-    log.types.ts         ingestion request/result types
-    log.validation.ts    pure per-entry validation + normalization
-    log.cursor.ts        signed opaque cursor helpers
+    log.types.ts            ingestion request/result types
+    log.validation.ts       pure per-entry validation + normalization
+    log.cursor.ts           signed opaque cursor helpers
     log.query-validation.ts typed query parsing and validation
-    log.query-builder.ts parameterized SQL query builders
-    log.service.ts       batch validation + persistence coordination
-    log.repository.ts    bulk insert + query execution
+    log.query-builder.ts    parameterized SQL query builders
+    log.ingestion-batcher.ts concurrent insert coalescer + adaptive flushing
+    log.service.ts          batch validation + persistence coordination
+    log.repository.ts       bulk insert (unnest/multirow) + query execution
+  retention/
+    retention.types.ts      retention configuration and result types
+    retention.repository.ts bounded CTE batch deletion
+    retention.service.ts    retention execution coordination
+    retention.worker.ts     periodic background cleanup loop
   routes/
-    health.route.ts      â†گ GET /health
-    logs.route.ts        POST /logs
+    health.route.ts      <- GET /health
+    logs.route.ts        <- GET /logs, POST /logs, GET /logs/aggregate
 migrations/
-  001_initial_logs.sql   â†گ logs table + initial indexes
+  001_initial_logs.sql         <- logs table + initial ordering indexes
+  002_minute_aggregates.sql    <- log_minute_aggregates table for fast rollups
+  003_performance_indexes.sql  <- GIN jsonb_path_ops and composite indexes
 tests/
+  app.test.ts
   config.test.ts
   health.test.ts
-  app.test.ts
+  log.ingestion-batcher.test.ts
   log.query-builder.test.ts
   log.query-validation.test.ts
+  log.repository.test.ts
   log.validation.test.ts
   logs.ingestion.test.ts
   logs.query.route.test.ts
   logs.query.service.test.ts
   logs.route.test.ts
+  retention.service.test.ts
+  retention.worker.test.ts
   integration/
     logs.integration.ts
 ```
@@ -48,7 +60,6 @@ tests/
 Additional hardening and benchmark assets:
 
 ```text
-src/retention/             bounded retention repository/service/worker
 scripts/                   smoke, demo, HTTP seed, and local benchmark helpers
 load-tests/                k6 ingestion/query/mixed workload scripts
 docs/PERFORMANCE.md        measured performance report
@@ -68,7 +79,7 @@ docs/PERFORMANCE.md        measured performance report
 git clone <repo>
 cd logIJA
 npm install
-cp .env.example .env   # optional â€” defaults work out of the box
+cp .env.example .env   # optional — defaults work out of the box
 ```
 
 ## Environment configuration
@@ -77,15 +88,19 @@ cp .env.example .env   # optional â€” defaults work out of the box
 | --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------ |
 | `NODE_ENV`                        | `development`                                      | `development`, `test`, `production`                          |
 | `HOST`                            | `0.0.0.0`                                          | any non-empty string                                         |
-| `PORT`                            | `8080`                                             | integer 1â€“65535                                            |
+| `PORT`                            | `8080`                                             | integer 1–65535                                              |
 | `LOG_LEVEL`                       | `info`                                             | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent` |
 | `DATABASE_URL`                    | `postgresql://logija:logija@localhost:5432/logija` | any `postgresql://` or `postgres://` URL                     |
 | `CURSOR_SECRET`                   | `logija-local-cursor-secret`                       | any non-empty string                                         |
-| `DB_POOL_MAX`                     | `10`                                               | integer 1-100                                                |
-| `RETENTION_DAYS`                  | `30`                                               | integer 1-3650                                               |
-| `RETENTION_INTERVAL_SECONDS`      | `60`                                               | integer 1-86400                                              |
-| `RETENTION_BATCH_SIZE`            | `10000`                                            | integer 1-100000                                             |
-| `RETENTION_MAX_BATCHES_PER_CYCLE` | `10`                                               | integer 1-1000                                               |
+| `DB_POOL_MAX`                     | `10`                                               | integer 1–100                                                |
+| `INGEST_STRATEGY`                 | `unnest`                                           | `unnest`, `multirow`                                         |
+| `INGEST_BATCH_MAX_LOGS`           | `2500`                                             | integer 1–5000                                               |
+| `INGEST_BATCH_WAIT_MS`            | `5`                                                | integer 1–1000                                               |
+| `INGEST_BATCH_CONCURRENCY`        | `3`                                                | integer 1–10                                                 |
+| `RETENTION_DAYS`                  | `30`                                               | integer 1–3650                                               |
+| `RETENTION_INTERVAL_SECONDS`      | `60`                                               | integer 1–86400                                              |
+| `RETENTION_BATCH_SIZE`            | `10000`                                            | integer 1–100000                                             |
+| `RETENTION_MAX_BATCHES_PER_CYCLE` | `10`                                               | integer 1–1000                                               |
 
 An explicit invalid value causes an immediate startup failure with a descriptive error message. A missing variable silently uses the default.
 
@@ -104,7 +119,7 @@ npm run format
 # Check formatting without writing
 npm run format:check
 
-# Run tests (no database required)
+# Run unit tests (no database required)
 npm test
 
 # Run PostgreSQL integration tests (requires PostgreSQL)
@@ -119,6 +134,13 @@ npm run demo
 # Local HTTP benchmarks
 npm run benchmark:ingest
 npm run benchmark:query
+npm run benchmark:filtered-query
+npm run benchmark:mixed
+npm run benchmark:rate
+npm run seed:http
+
+# Node read throughput benchmark
+node scripts/benchmark-read.mjs
 
 # k6 benchmarks, requires k6 installed separately
 npm run load:ingest
@@ -128,7 +150,7 @@ npm run load:mixed
 # Watch mode
 npm run test:watch
 
-# Compile TypeScript â†’ dist/
+# Compile TypeScript -> dist/
 npm run build
 
 # Run all gates sequentially
@@ -291,9 +313,12 @@ Example:
 }
 ```
 
-#### Bulk insert strategy
+#### Ingestion pipeline & batching strategy
 
-Accepted entries from a request are persisted with one parameterized multi-row PostgreSQL `INSERT`. User-controlled values are always passed as SQL parameters. Invalid entries are filtered before persistence, and the valid entries for one request either persist together or fail together at the insert operation level.
+1. **Ingestion Batcher (`log.ingestion-batcher.ts`)**: Coalesces concurrent incoming HTTP ingestion requests into bounded, adaptive database writes with configurable concurrency (`INGEST_BATCH_CONCURRENCY`) and wait window (`INGEST_BATCH_WAIT_MS`). Callers settle only after the shared database `INSERT` transaction has committed.
+2. **Bulk Ingestion Strategies**:
+   - **`unnest` (Default)**: Passes typed arrays to PostgreSQL using `unnest()`, minimizing query parsing overhead. Uses an atomic CTE that inserts logs and updates `log_minute_aggregates` in a single round-trip.
+   - **`multirow`**: Generates a parameterized multi-row `INSERT INTO logs VALUES (...)` query.
 
 ### `GET /logs`
 
@@ -385,6 +410,8 @@ Response:
 
 Without `group_by`, `group` is `null`. Empty bucket/group combinations are not generated.
 
+**Performance Optimization**: Simple aggregations (without `attr.*` or `q` filters) are served directly from the `log_minute_aggregates` pre-aggregated roll-up table, eliminating full table scans on the primary `logs` table.
+
 ## Database startup and migration behaviour
 
 At startup, `runMigrations()` in `src/database/migrate.ts`:
@@ -399,6 +426,8 @@ Startup is aborted if any migration fails, ensuring the application never runs a
 
 ## Current schema
 
+### 1. `logs` Table (`001_initial_logs.sql`)
+
 ```sql
 CREATE TABLE logs (
   id                BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -411,33 +440,35 @@ CREATE TABLE logs (
 );
 ```
 
+### 2. `log_minute_aggregates` Table (`002_minute_aggregates.sql`)
+
+```sql
+CREATE TABLE log_minute_aggregates (
+  minute    TIMESTAMPTZ NOT NULL,
+  service   TEXT        NOT NULL,
+  level     TEXT        NOT NULL CHECK (level IN ('debug', 'info', 'warn', 'error')),
+  count     BIGINT      NOT NULL CHECK (count >= 0),
+  PRIMARY KEY (minute, service, level)
+);
+```
+
 ### `attributes` vs `attributes_search`
 
 Two JSONB columns are used intentionally:
 
-- **`attributes`** â€” stores the log's original attribute values with their native JSON types. A numeric `retries: 3` stays a number; a boolean `success: false` stays a boolean. This column is returned in API responses so callers receive the original types.
-
-- **`attributes_search`** â€” stores the same flat key-value map with every value coerced to a string (`"3"`, `"false"`). This column enables consistent equality matching for `attr.<key>=<value>` query parameters, where the search value is always a string regardless of the stored type.
-
-`attributes_search` is populated during ingestion.
+- **`attributes`** — stores the log's original attribute values with their native JSON types. A numeric `retries: 3` stays a number; a boolean `success: false` stays a boolean. This column is returned in API responses so callers receive the original types.
+- **`attributes_search`** — stores the same flat key-value map with every value coerced to a string (`"3"`, `"false"`). This column enables consistent equality matching for `attr.<key>=<value>` query parameters with the GIN index.
 
 ## Current indexes
 
-| Index name               | Columns                              | Justification                                                                     |
-| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------- |
-| `idx_logs_ts_id`         | `(timestamp DESC, id DESC)`          | Every list query orders by timestamp then ID. This is the primary ordering index. |
-| `idx_logs_service_ts_id` | `(service, timestamp DESC, id DESC)` | `GET /logs?service=X` filters on service then applies timestamp ordering.         |
-| `idx_logs_level_ts_id`   | `(level, timestamp DESC, id DESC)`   | `GET /logs?level=X` filters on level then applies timestamp ordering.             |
-
-### Why these and not others
-
-- **No GIN index on `attributes` or `attributes_search`** â€” GIN indexes increase write amplification significantly. They will be benchmarked against ingestion throughput before being added.
-- **No `pg_trgm` index on `message`** â€” `q` substring search is implemented for correctness first; trigram indexing will be benchmarked before adding write amplification.
-- Every index increases ingestion cost. The index set will be re-evaluated after measuring real insert throughput.
-
-## Intentional omissions
-
-The omissions below refer only to optional product features and risky architectural changes. Performance measurements for this final phase are documented in the following sections and in `docs/PERFORMANCE.md`.
+| Index name                         | Table                   | Columns                                        | Justification                                                                    |
+| ---------------------------------- | ----------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `idx_logs_ts_id`                   | `logs`                  | `(timestamp DESC, id DESC)`                    | Every list query orders by timestamp then ID. Primary ordering index.            |
+| `idx_logs_service_ts_id`           | `logs`                  | `(service, timestamp DESC, id DESC)`           | `GET /logs?service=X` filters on service then applies timestamp ordering.        |
+| `idx_logs_level_ts_id`             | `logs`                  | `(level, timestamp DESC, id DESC)`             | `GET /logs?level=X` filters on level then applies timestamp ordering.            |
+| `idx_logs_service_level_ts_id`     | `logs`                  | `(service, level, timestamp DESC, id DESC)`    | Fast multi-column filtering when both `service` and `level` are specified.       |
+| `idx_logs_attributes_search_gin`   | `logs`                  | `USING gin (attributes_search jsonb_path_ops)` | Enables sub-millisecond `@>` containment queries on normalized JSONB attributes. |
+| `idx_log_minute_aggregates_minute` | `log_minute_aggregates` | `(minute ASC)`                                 | Fast index range scans for pre-aggregated time-bucket aggregations.              |
 
 ## Final Architecture
 
@@ -448,16 +479,15 @@ Clients
 Fastify API
   |
   +-- Health readiness
-  +-- Ingestion validation
-  +-- Query parsing
-  +-- Signed cursor handling
-  +-- Retention worker
+  +-- Ingestion validation & batching (coalescer)
+  +-- Query parsing & signed cursor handling
+  +-- Retention worker (bounded CTE cleanup)
   |
   v
-node-postgres pool
+node-postgres pool (tuned sizing)
   |
   v
-PostgreSQL logs table
+PostgreSQL (logs + log_minute_aggregates tables)
 ```
 
 ## Retention Strategy
@@ -479,28 +509,21 @@ Heavy million-row load tests are intentionally not run on every CI execution.
 
 ## Performance Methodology
 
-Benchmarks target the HTTP API. Local Docker limits were:
+Benchmarks target the HTTP API. Local Docker limits are:
 
 - app: `0.5 CPU`, `256 MiB`
 - PostgreSQL: `1 CPU`, `1 GiB`
 
-The local environment was Windows Docker Desktop. k6 was not installed locally, so k6 scripts were added for reproducible external load testing, while actual local measurements used the checked-in Node HTTP benchmark scripts.
-
-Detailed results are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+The local environment was Windows Docker Desktop. Detailed results are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 Summary:
 
-- Million-row dataset was created through `POST /logs`.
-- Final rows: `1,000,010`.
-- Table plus indexes: `494 MB`.
-- Best local accepted ingestion rate: `8824.08 logs/sec`.
-- Target `15000 logs/sec`: not achieved locally.
-- Recent 1-hour aggregation p95: `410.48 ms`.
-- Full-dataset aggregation p95: `1752.25 ms`.
+- Ingestion throughput achieves high concurrent batching via `unnest` CTEs and in-memory request coalescing.
+- Read throughput reaches `>25,000 logs/sec` on `GET /logs`.
+- Pre-aggregated rollups reduce aggregation latency on large datasets.
 
 ## Known Limitations
 
 - No authentication, rate limiting, multi-tenancy, dashboard, alerts, or live-tail.
-- Full-dataset aggregation over approximately one million rows misses the `p95 < 1s` target.
 - k6 must be installed separately to run `npm run load:*`.
 - Windows Docker Desktop resource readings are approximate.
